@@ -178,7 +178,7 @@ export default function SetupScreen({ onStart, templates = [], onSaveTemplate, o
             <button className="btn sm" onClick={addRow}>+ Dodaj igrača</button>
           </div>
         </div>
-        <div className="col">
+        <div className="roster-list">
           {roster.map((p) => (
             <div className="roster-row" key={p.id}>
               <input type="text" inputMode="numeric" value={p.number} placeholder="Br." onChange={(e) => setRow(p.id, { number: e.target.value })} />

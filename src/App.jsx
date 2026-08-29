@@ -79,6 +79,8 @@ function Shell() {
   if (!game) {
     return (
       <div className="app">
+        {/* .app ne skrola — postavljanje mora imati vlastiti spremnik za skrolanje */}
+        <div className="scroll-page">
         <SetupScreen
           onStart={(g) => { setGame(g); go('game') }}
           templates={templates}
@@ -87,6 +89,7 @@ function Shell() {
           onOpenArchive={() => go('archive')}
           archiveCount={archive.length}
         />
+        </div>
       </div>
     )
   }
@@ -94,7 +97,8 @@ function Shell() {
   if (view === 'menu') {
     const base = gameFileBase(game)
     return (
-      <div className="scroll-page">
+      <div className="app">
+        <div className="scroll-page">
         <div className="setup">
           <div className="row" style={{ justifyContent: 'space-between' }}>
             <h1 style={{ margin: 0, color: 'var(--blue-hi)' }}>Izbornik</h1>
@@ -167,6 +171,7 @@ function Shell() {
           >
             Odbaci utakmicu bez spremanja
           </button>
+        </div>
         </div>
       </div>
     )

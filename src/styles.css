@@ -336,6 +336,9 @@ table.stats tr.on td { background: rgba(46, 139, 245, .06); }
 .field label { font-size: 12px; font-weight: 700; color: var(--muted); }
 .grid-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
 .roster-row { display: grid; grid-template-columns: 78px 1fr 46px; gap: 8px; align-items: center; }
+/* na širem ekranu roster ide u dva stupca da stane više igrača bez skrolanja */
+.roster-list { display: grid; grid-template-columns: 1fr; gap: 8px; }
+@media (min-width: 700px) { .roster-list { grid-template-columns: 1fr 1fr; } }
 
 .switch { display: flex; border: 1px solid var(--line-strong); border-radius: var(--radius); overflow: hidden; }
 .switch button { flex: 1; min-height: 48px; border: none; background: var(--panel-2); color: var(--muted); font-weight: 700; }
