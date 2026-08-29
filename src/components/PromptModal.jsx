@@ -2,21 +2,17 @@ import React, { useRef } from 'react'
 
 /**
  * Središnji upit — lančana pitanja i odabir igrača.
- * - prvih 200 ms ignorira klikove: duh-klik dodira koji je modal otvorio ne
- *   smije ga zatvoriti ni slučajno odabrati opciju
- * - `onOverlay(x, y)` dopušta tap KROZ overlay (npr. na igrača u popisu)
+ * Tap izvan kartice = odustani, i NIŠTA drugo. Prvih 120 ms se klikovi
+ * ignoriraju da duh-klik dodira koji je modal otvorio ne napravi ništa.
  */
-export default function PromptModal({ title, note, options, onClose, onOverlay }) {
+export default function PromptModal({ title, note, options, onClose }) {
   const openedAt = useRef(Date.now())
   const guard = (fn) => (e) => {
-    if (Date.now() - openedAt.current < 200) return
+    if (Date.now() - openedAt.current < 120) return
     fn(e)
   }
   return (
-    <div
-      className="modal-overlay"
-      onClick={guard((e) => (onOverlay ? onOverlay(e.clientX, e.clientY) : onClose()))}
-    >
+    <div className="modal-overlay" onClick={guard(onClose)}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <div>

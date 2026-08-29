@@ -87,6 +87,12 @@ export default function GameScreen({ onExit }) {
     setChain((c) => (c && c.kind === 'ft' ? c : null))
   }, [])
 
+  // Sigurnosna mreza: ako povlacenje nestane bilo kojim putem, otkljucaj
+  // stupac i ugasi autoskrol — zaglavljeni lock ubija skrolanje do reloada.
+  useEffect(() => {
+    if (!drag) { setDragLock(false); stopAutoScroll() }
+  }, [drag]) // eslint-disable-line
+
   useEffect(() => {
     clearTimeout(selTimer.current)
     if (selectedId && !pendingShot && !pendingAction) {
@@ -470,7 +476,6 @@ export default function GameScreen({ onExit }) {
       }
       : {
         title: `Šut za ${v} — tko je šutirao?`,
-        note: 'ili tapni igrača u popisu',
         options: [
           ...courtOpts((id) => setPendingShot({ ...pendingShot, playerId: id })),
           opt('x', 'Odustani', () => setPendingShot(null), 'ghost'),
@@ -480,10 +485,9 @@ export default function GameScreen({ onExit }) {
   } else if (pendingAction) {
     prompt = {
       title: `${pendingAction.label} — tko?`,
-      note: 'ili tapni igrača u popisu',
       options: [
+        // samo petorka — akcije u igri rade igrači na parketu
         ...courtOpts((id) => completeAction(pendingAction, id)),
-        ...(bench.length ? benchOpts((id) => completeAction(pendingAction, id)) : []),
         opt('x', 'Odustani', () => setPendingAction(null), 'ghost'),
       ],
       onClose: () => setPendingAction(null),
@@ -593,15 +597,6 @@ export default function GameScreen({ onExit }) {
       onOpenLineup={() => setLineupOpen(true)}
     />
   )
-
-  /** Igrač ispod dane točke, i kad je iznad njega modal overlay. */
-  const pidAt = (x, y) => {
-    for (const el of document.elementsFromPoint(x, y)) {
-      const card = el.closest ? el.closest('[data-pid]') : null
-      if (card) return card.getAttribute('data-pid')
-    }
-    return null
-  }
 
   const editEvent = editId ? game.events.find((e) => e.id === editId) : null
   const usFouls = teamFouls('us')
@@ -821,22 +816,7 @@ export default function GameScreen({ onExit }) {
       )}
 
       {prompt && (
-        <PromptModal
-          title={prompt.title}
-          note={prompt.note}
-          options={prompt.options}
-          onClose={prompt.onClose}
-          onOverlay={
-            // upiti koji biraju igraca: tap na igraca u popisu prolazi KROZ overlay
-            (pendingShot && !pendingShot.playerId) || pendingAction || (chain && chain.kind !== 'ft')
-              ? (x, y) => {
-                const pid = pidAt(x, y)
-                if (pid) tapPlayer(pid)
-                else prompt.onClose()
-              }
-              : undefined
-          }
-        />
+        <PromptModal title={prompt.title} note={prompt.note} options={prompt.options} onClose={prompt.onClose} />
       )}
 
       {ft && (
