@@ -10,8 +10,14 @@ Vizualni jezik prema handoffu `design_handoff_dinamo_redizajn`: Barlow /
 Barlow Condensed (self-hostani u `public/fonts/`, pa rade offline), tamna
 mornarska paleta s Dinamo plavom, parket na dijagramu terena.
 
-**Grb kluba:** stavi PNG s prozirnom pozadinom u `public/crest.png` i pojavit
-će se u zaglavlju i na setup ekranu. Bez njega se prikazuju inicijali ekipe.
+**Grb kluba:** stavi sliku u `public/crest.png` ili `public/crest.jpg` i
+pojavit će se u zaglavlju i na setup ekranu. Bez nje se prikazuju inicijali
+ekipe.
+
+**Zamjena povlačenjem:** prstom se povlačenje pokreće tek nakon kratkog
+zadržavanja prsta na kartici igrača — bez toga bi popis igrača prestao
+skrolati. Mišem povlačenje kreće nakon 12 px. Gumb „Zamjena" radi isto
+i uvijek je dostupan.
 
 ## Ključni koncept — event log
 

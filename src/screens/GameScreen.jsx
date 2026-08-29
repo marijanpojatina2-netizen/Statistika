@@ -5,6 +5,7 @@ import { shotValue } from '../model/court.js'
 import { fmtClock } from '../model/derive.js'
 import useWakeLock from '../hooks/useWakeLock.js'
 import useIsMobile from '../hooks/useIsMobile.js'
+import useFullscreen from '../hooks/useFullscreen.js'
 import Crest from '../components/Crest.jsx'
 import Court from '../components/Court.jsx'
 import PlayerCard from '../components/PlayerCard.jsx'
@@ -50,6 +51,7 @@ export default function GameScreen({ onExit }) {
   const toastTimer = useRef(null)
   const suppressTap = useRef(0)
   const isMobile = useIsMobile()
+  const fullscreen = useFullscreen()
 
   useWakeLock(!!game && game.status === 'live')
 
@@ -239,14 +241,43 @@ export default function GameScreen({ onExit }) {
   }
 
   // --- drag & drop zamjena ---------------------------------------------------
+  // Prstom: kratko povlačenje skrola popis, a povlačenje kreće tek nakon
+  // zadržavanja prsta. Mišem: povlačenje kreće nakon 12 px, kao i prije.
   const startDrag = (e, id, fromBench) => {
     if (e.button != null && e.button !== 0) return
+    const isTouch = e.pointerType === 'touch' || e.pointerType === 'pen'
     const sx = e.clientX
     const sy = e.clientY
+    const target = e.currentTarget
+    const pointerId = e.pointerId
     let active = false
+    let holdTimer = null
+
+    const cleanup = () => {
+      clearTimeout(holdTimer)
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+      window.removeEventListener('touchmove', blockScroll)
+    }
+    // Kad povlačenje krene, preglednik ne smije skrolati popis pod prstom.
+    const blockScroll = (ev) => { if (active) ev.preventDefault() }
+
+    const begin = (x, y) => {
+      active = true
+      try { target.setPointerCapture(pointerId) } catch { /* nije nužno */ }
+      if (navigator.vibrate) { try { navigator.vibrate(15) } catch { /* ignore */ } }
+      setDrag({ id, fromBench, x, y, overId: null })
+    }
+
     const move = (ev) => {
-      if (!active && Math.hypot(ev.clientX - sx, ev.clientY - sy) > DRAG_THRESHOLD) active = true
-      if (!active) return
+      const dist = Math.hypot(ev.clientX - sx, ev.clientY - sy)
+      if (!active) {
+        // Prstom prije zadržavanja: pomak znači da korisnik skrola popis.
+        if (isTouch) { if (dist > 10) cleanup(); return }
+        if (dist > DRAG_THRESHOLD) begin(ev.clientX, ev.clientY)
+        else return
+      }
       ev.preventDefault()
       const el = document.elementFromPoint(ev.clientX, ev.clientY)
       const card = el && el.closest ? el.closest('[data-pid]') : null
@@ -254,10 +285,9 @@ export default function GameScreen({ onExit }) {
       const overId = card && card.getAttribute('data-zone') === wantZone ? card.getAttribute('data-pid') : null
       setDrag({ id, fromBench, x: ev.clientX, y: ev.clientY, overId })
     }
+
     const up = () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      window.removeEventListener('pointercancel', up)
+      cleanup()
       if (!active) return
       suppressTap.current = Date.now()
       setDrag((d) => {
@@ -269,9 +299,12 @@ export default function GameScreen({ onExit }) {
         return null
       })
     }
+
+    if (isTouch) holdTimer = setTimeout(() => begin(sx, sy), 260)
     window.addEventListener('pointermove', move, { passive: false })
     window.addEventListener('pointerup', up)
     window.addEventListener('pointercancel', up)
+    window.addEventListener('touchmove', blockScroll, { passive: false })
   }
 
   const doUndo = () => {
@@ -423,7 +456,7 @@ export default function GameScreen({ onExit }) {
       game={game}
       act={act}
       oppName={oppName}
-      showSub={isMobile}
+      showSub
       onOpenSub={() => openChain({ kind: 'subOut' }, 0)}
       onOpenLineup={() => setLineupOpen(true)}
     />
@@ -502,6 +535,17 @@ export default function GameScreen({ onExit }) {
         </button>
         <div className="grow" />
         <button className="btn danger" style={{ minHeight: 38, letterSpacing: '.06em', fontWeight: 700, fontFamily: 'var(--f-ui)', fontSize: 13 }} onClick={doUndo}>↶ UNDO</button>
+        {fullscreen.supported && (
+          <button
+            className="btn ghost"
+            style={{ minHeight: 38, width: 44, padding: 0, fontSize: 16 }}
+            onClick={fullscreen.toggle}
+            aria-label={fullscreen.active ? 'Izađi iz punog ekrana' : 'Preko cijelog ekrana'}
+            title={fullscreen.active ? 'Izađi iz punog ekrana' : 'Preko cijelog ekrana'}
+          >
+            {fullscreen.active ? '⛶' : '⛶'}
+          </button>
+        )}
         <button className="btn ghost" style={{ minHeight: 38, width: 44, padding: 0 }} onClick={onExit} aria-label="Izbornik">☰</button>
       </div>
 
@@ -576,7 +620,7 @@ export default function GameScreen({ onExit }) {
             )}
             <div style={{ padding: '10px 4px 6px' }}>
               <div className="section-title">Klupa</div>
-              <div className="bench-note">Zamjena: povuci igrača na petorku (ili obrnuto)</div>
+              <div className="bench-note">Zamjena: drži prst na igraču pa ga povuci na petorku — ili gumb Zamjena</div>
             </div>
             {bench.map((r) => (
               <PlayerCard

@@ -1,27 +1,32 @@
-import React from 'react'
+import React, { useState } from 'react'
 
-/** Grb kluba: prava slika iz public/crest.png ako postoji, inače inicijali. */
+/**
+ * Grb kluba. Datoteka ide u public/ kao `crest.png` ili `crest.jpg`.
+ * Bez nje se prikazuju inicijali ekipe, a bez imena ikona aplikacije.
+ */
 function initials(name) {
   const words = (name || '').split(/\s+/).filter(Boolean).filter((w) => !/^kk$/i.test(w))
-  const src = words.length ? words : (name || '?').split(/\s+/).filter(Boolean)
-  return src.slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?'
+  const src = words.length ? words : (name || '').split(/\s+/).filter(Boolean)
+  return src.slice(0, 2).map((w) => w[0]).join('').toUpperCase()
 }
 
 export default function Crest({ name, small }) {
-  const [broken, setBroken] = React.useState(false)
   const base = import.meta.env.BASE_URL
-  // Pravi grb ide u public/crest.png; bez njega inicijali, a bez imena ikona aplikacije.
-  if (!broken) {
+  const sources = [`${base}crest.png`, `${base}crest.jpg`]
+  const [step, setStep] = useState(0)
+  const cls = `crest ${small ? 'sm' : ''}`
+
+  if (step < sources.length) {
     return (
-      <div className={`crest ${small ? 'sm' : ''}`}>
-        <img src={`${base}crest.png`} alt={name || 'Grb kluba'} onError={() => setBroken(true)} />
+      <div className={cls}>
+        <img src={sources[step]} alt={name || 'Grb kluba'} onError={() => setStep((n) => n + 1)} />
       </div>
     )
   }
   const text = initials(name)
   return (
-    <div className={`crest ${small ? 'sm' : ''}`}>
-      {text === '?' ? <img src={`${base}icon-192.png`} alt="" /> : text}
+    <div className={cls}>
+      {text || <img src={`${base}icon-192.png`} alt="" />}
     </div>
   )
 }
