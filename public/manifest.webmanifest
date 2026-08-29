@@ -1,0 +1,17 @@
+{
+  "name": "Košarkaška statistika",
+  "short_name": "Statistika",
+  "description": "Vođenje košarkaške statistike uživo — offline, na tabletu ili mobitelu.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F4F6F8",
+  "theme_color": "#005BAC",
+  "lang": "hr",
+  "icons": [
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
