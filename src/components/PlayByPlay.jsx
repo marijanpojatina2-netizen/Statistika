@@ -1,42 +1,29 @@
 import React, { useMemo } from 'react'
-import { EV, TEAM, describeEvent } from '../model/events.js'
+import { EV, describeEvent } from '../model/events.js'
 import { fmtClock } from '../model/derive.js'
 
-export default function PlayByPlay({ game, onSelectEvent, selectedId }) {
+/** Kronološki log, najnoviji gore. Tap na redak otvara uređivanje, ✕ briše. */
+export default function PlayByPlay({ game, onSelectEvent, onDelete, selectedId }) {
   const byId = useMemo(() => Object.fromEntries(game.roster.map((p) => [p.id, p])), [game.roster])
-
-  // redni broj unutar cetvrtine (za nacin bez vremena)
-  const ordinals = useMemo(() => {
-    const m = {}
-    const counters = {}
-    for (const e of game.events) {
-      counters[e.period] = (counters[e.period] || 0) + 1
-      m[e.id] = counters[e.period]
-    }
-    return m
-  }, [game.events])
-
   const list = [...game.events].reverse()
 
+  if (list.length === 0) return <div className="empty-note">Još nema unosa.</div>
+
   return (
-    <div className="pbp">
-      {list.length === 0 && <div className="muted">Još nema unosa.</div>}
-      {list.map((ev) => {
-        const cls = ev.type === EV.SHOT ? (ev.made ? 'made' : 'miss') : ''
-        return (
-          <button
-            key={ev.id}
-            className={`pbp-item ${cls} ${ev.team === TEAM.OPP ? 'opp' : ''} ${selectedId === ev.id ? 'sel' : ''}`}
-            onClick={() => onSelectEvent && onSelectEvent(ev)}
-          >
-            <span className="t">
-              {ev.period}Č · {game.trackTime ? fmtClock(ev.clock) : `#${ordinals[ev.id]}`}
-            </span>
-            <span>{describeEvent(ev, byId, game)}</span>
-            <span className="muted" style={{ fontSize: 12 }}>uredi</span>
+    <div className="log-list">
+      {list.map((ev) => (
+        <div key={ev.id} className={`log-row ${selectedId === ev.id ? 'sel' : ''}`}>
+          <span className="log-q">
+            {ev.period}Č{game.trackTime && ev.clock != null ? ` · ${fmtClock(ev.clock)}` : ''}
+          </span>
+          <button className="log-text" onClick={() => onSelectEvent && onSelectEvent(ev)}>
+            {describeEvent(ev, byId, game)}
           </button>
-        )
-      })}
+          {onDelete && ev.type !== EV.LINEUP && ev.type !== EV.PERIOD_START && (
+            <button className="icon-btn" aria-label="Obriši unos" onClick={() => onDelete(ev)}>✕</button>
+          )}
+        </div>
+      ))}
     </div>
   )
 }

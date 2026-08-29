@@ -106,7 +106,7 @@ export default function ShotChart({ game }) {
           </div>
         </div>
 
-        <div className="panel table-wrap">
+        <div className="stat-panel scroll-x">
           <table className="stats">
             <thead>
               <tr><th className="l">Zona</th><th>Pog-Šut</th><th>%</th></tr>

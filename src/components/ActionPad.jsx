@@ -2,75 +2,72 @@ import React from 'react'
 import { EV, TEAM } from '../model/events.js'
 
 /**
- * Klasicni gumbi za brzi unos (bez dijagrama terena).
- * `act(specs)` prima jedan ili vise event-spec objekata koji cine jednu grupu.
- * `compact` skracuje natpise za mobilni raspored.
+ * Akcijska ploča. Igrač se može odabrati prije ILI poslije akcije —
+ * `act` prima spec, a ekran ga dovrši kad zna igrača.
  */
-export default function ActionPad({ game, selectedId, selectedName, act, onOpenSub, onOpenLineup, compact }) {
-  // Igrač se može odabrati prije ILI poslije akcije — ako nije odabran,
-  // `needsPlayer` kaže da akcija čeka igrača umjesto da gumb bude zaključan.
-  const P = (type, label, payload = {}) => ({ type, playerId: selectedId, needsPlayer: true, label, payload })
-  const L = (full, short) => (compact ? short : full)
-
-  const shot = (value, made) => act(P(
-    EV.SHOT,
-    `${value === 1 ? 'SB' : `${value}P`} ${made ? 'pogodak' : 'promašaj'}`,
-    { made, value, x: null, y: null },
-  ))
-  const oppShot = (value, made) => act({
-    type: EV.SHOT, team: TEAM.OPP, playerId: null, payload: { made, value, x: null, y: null },
+export default function ActionPad({ game, act, oppName, onOpenSub, onOpenLineup, showSub }) {
+  const shot = (value, made) => act({
+    kind: 'shot', made, value,
+    label: `${value === 1 ? 'SB' : `${value}P`} ${made ? 'pogodak' : 'promašaj'}`,
   })
+  const simple = (type, label, payload) => act({ kind: 'simple', type, label, payload })
+  const opp = (specs, toast) => act({ kind: 'team', specs, toast })
 
   return (
-    <div className="actions">
-      <div className={`hint ${selectedId ? 'ok' : ''}`}>
-        {selectedId ? `Odabran: ${selectedName}` : 'Tapni akciju pa igrača (ili obrnuto)'}
-      </div>
-
-      <div className="section-title">Šut</div>
-      <div className="grid4">
-        <button className="btn good lg" onClick={() => shot(2, true)}>2P ✓</button>
-        <button className="btn bad lg" onClick={() => shot(2, false)}>2P ✗</button>
-        <button className="btn good lg" onClick={() => shot(3, true)}>3P ✓</button>
-        <button className="btn bad lg" onClick={() => shot(3, false)}>3P ✗</button>
-        <button className="btn good" onClick={() => shot(1, true)}>SB ✓</button>
-        <button className="btn bad" onClick={() => shot(1, false)}>SB ✗</button>
-      </div>
-
-      <div className="section-title">Skok i akcije</div>
-      <div className="grid4">
-        <button className="btn" onClick={() => act(P(EV.REBOUND, 'Skok napadački', { off: true }))}>{L('Skok NAP', 'Skok N')}</button>
-        <button className="btn" onClick={() => act(P(EV.REBOUND, 'Skok obrambeni', { off: false }))}>{L('Skok OBR', 'Skok O')}</button>
-        <button className="btn" onClick={() => act(P(EV.ASSIST, 'Asistencija'))}>AST</button>
-        <button className="btn" onClick={() => act(P(EV.BLOCK, 'Blokada'))}>BLK</button>
-        <button className="btn" onClick={() => act(P(EV.STEAL, 'Ukradena lopta'))}>STL</button>
-        <button className="btn" onClick={() => act(P(EV.TURNOVER, 'Izgubljena lopta'))}>TO</button>
-        <button className="btn warn" onClick={() => act(P(EV.FOUL, 'Prekršaj', { kind: 'personal' }))}>Prekršaj</button>
-        <button className="btn" onClick={() => act(P(EV.FOUL_DRAWN, 'Izborena osobna'))}>{L('Izborena os.', 'Izb. os.')}</button>
-      </div>
-
-      <div className="section-title">Momčadski / protivnik</div>
-      <div className="grid4">
-        <button className="btn" onClick={() => act({ type: EV.REBOUND, playerId: null, payload: { off: true } })}>{L('Mom. skok NAP', 'Mom. NAP')}</button>
-        <button className="btn" onClick={() => act({ type: EV.REBOUND, playerId: null, payload: { off: false } })}>{L('Mom. skok OBR', 'Mom. OBR')}</button>
-        <button className="btn" onClick={() => act({ type: EV.TIMEOUT, playerId: null })}>{L('Minuta odmora', 'Time-out')}</button>
-        <button className="btn" onClick={onOpenSub}>Zamjena</button>
-        <button className="btn" onClick={onOpenLineup}>Postava</button>
-      </div>
-      <div className="grid4">
-        <button className="btn primary" onClick={() => oppShot(1, true)}>Prot. +1</button>
-        <button className="btn primary" onClick={() => oppShot(2, true)}>Prot. +2</button>
-        <button className="btn primary" onClick={() => oppShot(3, true)}>Prot. +3</button>
-        <button className="btn warn" onClick={() => act({ type: EV.FOUL, team: TEAM.OPP, playerId: null, payload: { kind: 'personal' } })}>{L('Prot. prekršaj', 'Prot. PF')}</button>
-      </div>
-      {game.trackOpponentShots && (
-        <div className="grid4">
-          <button className="btn bad" onClick={() => oppShot(2, false)}>Prot. 2P ✗</button>
-          <button className="btn bad" onClick={() => oppShot(3, false)}>Prot. 3P ✗</button>
-          <button className="btn bad" onClick={() => oppShot(1, false)}>Prot. SB ✗</button>
-          <button className="btn" onClick={() => act({ type: EV.TURNOVER, team: TEAM.OPP, playerId: null })}>Prot. TO</button>
+    <div className="pad">
+      <div className="shot">
+        <div className="pad-label">Šut</div>
+        <div className="grid2">
+          <button className="btn good" onClick={() => shot(2, true)}>2P ✓</button>
+          <button className="btn bad" onClick={() => shot(2, false)}>2P ✗</button>
+          <button className="btn good" onClick={() => shot(3, true)}>3P ✓</button>
+          <button className="btn bad" onClick={() => shot(3, false)}>3P ✗</button>
+          <button className="btn good" onClick={() => shot(1, true)}>SB ✓</button>
+          <button className="btn bad" onClick={() => shot(1, false)}>SB ✗</button>
         </div>
-      )}
+      </div>
+
+      <div>
+        <div className="pad-label">Skok i akcije</div>
+        <div className="grid4">
+          <button className="btn" onClick={() => simple(EV.REBOUND, 'Skok napadački', { off: true })}>Skok N</button>
+          <button className="btn" onClick={() => simple(EV.REBOUND, 'Skok obrambeni', { off: false })}>Skok O</button>
+          <button className="btn" onClick={() => simple(EV.ASSIST, 'Asistencija')}>AST</button>
+          <button className="btn" onClick={() => simple(EV.BLOCK, 'Blokada')}>BLK</button>
+          <button className="btn" onClick={() => act({ kind: 'steal', label: 'Ukradena lopta' })}>STL</button>
+          <button className="btn" onClick={() => simple(EV.TURNOVER, 'Izgubljena lopta')}>TO</button>
+          <button className="btn warn" onClick={() => act({ kind: 'foul', label: 'Prekršaj' })}>Prekršaj</button>
+          <button className="btn" onClick={() => act({ kind: 'foulDrawn', label: 'Izborena osobna' })}>Izb. os.</button>
+        </div>
+      </div>
+
+      <div>
+        <div className="pad-label">Momčad</div>
+        <div className={showSub ? 'grid3' : 'grid2'}>
+          <button className="btn" onClick={() => opp([{ type: EV.TIMEOUT, playerId: null }], 'Time-out')}>Time-out</button>
+          {showSub && <button className="btn" onClick={onOpenSub}>Zamjena</button>}
+          <button className="btn" onClick={onOpenLineup}>Postava</button>
+        </div>
+      </div>
+
+      <div>
+        <div className="pad-label">Protivnik · {oppName}</div>
+        <div className="grid3">
+          <button className="btn opp" onClick={() => opp([{ type: EV.SHOT, team: TEAM.OPP, playerId: null, payload: { made: true, value: 2, x: null, y: null } }], 'Protivnik +2')}>+2</button>
+          <button className="btn opp" onClick={() => opp([{ type: EV.SHOT, team: TEAM.OPP, playerId: null, payload: { made: true, value: 3, x: null, y: null } }], 'Protivnik +3')}>+3</button>
+          <button className="btn opp" onClick={() => opp([{ type: EV.SHOT, team: TEAM.OPP, playerId: null, payload: { made: true, value: 1, x: null, y: null } }], 'Protivnik +1')}>+1</button>
+          <button className="btn opp" onClick={() => act({ kind: 'oppFoul', label: 'Prekršaj protivnika' })}>Prekršaj</button>
+          <button className="btn opp" onClick={() => opp([{ type: EV.TURNOVER, team: TEAM.OPP, playerId: null }], 'Izgubljena protivnika')}>Izgubljena</button>
+          <button className="btn opp" onClick={() => opp([{ type: EV.TIMEOUT, team: TEAM.OPP, playerId: null }], 'Time-out protivnika')}>Time-out</button>
+        </div>
+        {game.trackOpponentShots && (
+          <div className="grid3" style={{ marginTop: 7 }}>
+            <button className="btn opp" onClick={() => opp([{ type: EV.SHOT, team: TEAM.OPP, playerId: null, payload: { made: false, value: 2, x: null, y: null } }], 'Protivnik 2P ✗')}>2P ✗</button>
+            <button className="btn opp" onClick={() => opp([{ type: EV.SHOT, team: TEAM.OPP, playerId: null, payload: { made: false, value: 3, x: null, y: null } }], 'Protivnik 3P ✗')}>3P ✗</button>
+            <button className="btn opp" onClick={() => opp([{ type: EV.SHOT, team: TEAM.OPP, playerId: null, payload: { made: false, value: 1, x: null, y: null } }], 'Protivnik SB ✗')}>SB ✗</button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

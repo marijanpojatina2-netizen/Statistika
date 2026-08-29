@@ -1,7 +1,17 @@
 # Košarkaška statistika (PWA)
 
 Web aplikacija za vođenje statistike košarkaške utakmice uživo — na tabletu ili
-mobitelu, potpuno offline. Svijetla tema, veliki dodirni gumbi, sve na hrvatskom.
+mobitelu, potpuno offline. Tamna tema u klupskim bojama, veliki dodirni gumbi,
+sve na hrvatskom.
+
+## Dizajn
+
+Vizualni jezik prema handoffu `design_handoff_dinamo_redizajn`: Barlow /
+Barlow Condensed (self-hostani u `public/fonts/`, pa rade offline), tamna
+mornarska paleta s Dinamo plavom, parket na dijagramu terena.
+
+**Grb kluba:** stavi PNG s prozirnom pozadinom u `public/crest.png` i pojavit
+će se u zaglavlju i na setup ekranu. Bez njega se prikazuju inicijali ekipe.
 
 ## Ključni koncept — event log
 
@@ -20,9 +30,16 @@ sve izvedene brojke.
 - `src/model/svgPng.js` — shot chart kao PNG slika
 
 Svaki unos može biti **grupa evenata** (npr. šut + asistencija, ukradena +
-izgubljena protivnika). UNDO briše cijelu zadnju grupu odjednom. Iznimka su
-slobodna bacanja: svako ide u vlastitu grupu da se krivo upisano bacanje može
-poništiti bez brisanja prekršaja i ostatka serije.
+izgubljena protivnika). UNDO briše cijelu zadnju grupu odjednom, pa jedan UNDO
+poništi cijeli and-1 lanac (šut + faul + slobodno bacanje).
+
+Posebni tokovi:
+- **and-1** — nakon pogotka „+ FAUL" upiše protivnički faul, izborenu osobnu
+  šutera i otvori 1 slobodno bacanje, sve u istoj grupi
+- **šuterski faul** — nakon promašaja briše upisani pokušaj šuta iz grupe (FIBA:
+  nema pokušaja) i otvara 2 ili 3 bacanja prema poziciji šuta
+- **bonus** — peti momčadski prekršaj u četvrtini automatski otvara 2 bacanja;
+  ako je to ujedno igračeva peta osobna, obavezna zamjena se traži nakon bacanja
 
 ## Pokretanje
 

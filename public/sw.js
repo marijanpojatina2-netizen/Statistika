@@ -1,11 +1,11 @@
 /* Service worker — potpuno offline radi u dvorani bez interneta. */
-const CACHE = 'ks-v1'
+const CACHE = 'ks-v2'
 
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
     const c = await caches.open(CACHE)
     // Ljuska aplikacije; ostalo se kesira pri prvom dohvatu.
-    await c.addAll(['./', './manifest.webmanifest', './icon-192.png', './icon-512.png']).catch(() => {})
+    await c.addAll(['./', './manifest.webmanifest', './fonts.css', './icon-192.png', './icon-512.png']).catch(() => {})
     self.skipWaiting()
   })())
 })

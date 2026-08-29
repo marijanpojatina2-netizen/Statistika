@@ -2,8 +2,7 @@ import React, { useMemo, useState } from 'react'
 import { seasonStats } from '../model/season.js'
 import { fmtPct } from '../model/derive.js'
 import { boxScoreCsv, playByPlayCsv, seasonCsv, shareText, downloadCsv, gameFileBase } from '../model/exportCsv.js'
-import BoxScore from '../components/BoxScore.jsx'
-import ShotChart from '../components/ShotChart.jsx'
+import StatsTab from '../components/StatsTab.jsx'
 
 const hrDate = (iso) => {
   const d = new Date(`${iso}T00:00:00`)
@@ -13,7 +12,6 @@ const hrDate = (iso) => {
 export default function ArchiveScreen({ archive, onDelete, onClose, onShare, sharePanel }) {
   const [tab, setTab] = useState('utakmice')
   const [openId, setOpenId] = useState(null)
-  const [openTab, setOpenTab] = useState('box')
   const [confirmId, setConfirmId] = useState(null)
 
   const season = useMemo(() => seasonStats(archive), [archive])
@@ -49,7 +47,7 @@ export default function ArchiveScreen({ archive, onDelete, onClose, onShare, sha
                   <div className="row wrap" style={{ justifyContent: 'space-between', gap: 8 }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 800 }}>
-                        <span className={`chip ${s.result === 'W' ? 'win' : s.result === 'L' ? 'loss' : ''}`}>{s.result}</span>
+                        <span className={`pill ${s.result === 'L' ? 'hot' : ''}`}>{s.result}</span>
                         {' '}{s.usName} {s.stats.score.us} : {s.stats.score.opp} {s.oppName}
                       </div>
                       <div className="muted" style={{ fontSize: 13 }}>
@@ -57,7 +55,7 @@ export default function ArchiveScreen({ archive, onDelete, onClose, onShare, sha
                       </div>
                     </div>
                     <div className="row wrap" style={{ gap: 6 }}>
-                      <button className="btn sm" onClick={() => { setOpenId(isOpen ? null : g.id); setOpenTab('box') }}>
+                      <button className="btn sm" onClick={() => setOpenId(isOpen ? null : g.id)}>
                         {isOpen ? 'Sakrij' : 'Otvori'}
                       </button>
                       <button className="btn sm" onClick={() => onShare(shareText(g, s.stats))}>Podijeli</button>
@@ -76,13 +74,7 @@ export default function ArchiveScreen({ archive, onDelete, onClose, onShare, sha
 
                   {isOpen && (
                     <div style={{ marginTop: 10 }}>
-                      <div className="seg" style={{ maxWidth: 300, marginBottom: 8 }}>
-                        <button className={openTab === 'box' ? 'on' : ''} onClick={() => setOpenTab('box')}>Box score</button>
-                        <button className={openTab === 'shot' ? 'on' : ''} onClick={() => setOpenTab('shot')}>Shot chart</button>
-                      </div>
-                      {openTab === 'box'
-                        ? <BoxScore game={g} stats={s.stats} />
-                        : <ShotChart game={g} />}
+                      <StatsTab game={g} stats={s.stats} usName={s.usName} oppName={s.oppName} />
                     </div>
                   )}
                 </div>
@@ -93,11 +85,11 @@ export default function ArchiveScreen({ archive, onDelete, onClose, onShare, sha
 
         {tab === 'sezona' && (
           <div className="col">
-            <div className="tiles">
-              <div className="tile"><div className="tile-label">Omjer</div><div className="tile-value">{season.record.w}-{season.record.l}{season.record.d ? `-${season.record.d}` : ''}</div><div className="tile-note">{season.games} utakmica</div></div>
-              <div className="tile"><div className="tile-label">Dano po utakmici</div><div className="tile-value">{season.games ? (season.record.pf / season.games).toFixed(1) : '–'}</div><div className="tile-note">ukupno {season.record.pf}</div></div>
-              <div className="tile"><div className="tile-label">Primljeno po utakmici</div><div className="tile-value">{season.games ? (season.record.pa / season.games).toFixed(1) : '–'}</div><div className="tile-note">ukupno {season.record.pa}</div></div>
-              <div className="tile"><div className="tile-label">Razlika</div><div className="tile-value">{season.games ? ((season.record.pf - season.record.pa) / season.games > 0 ? '+' : '') + ((season.record.pf - season.record.pa) / season.games).toFixed(1) : '–'}</div><div className="tile-note">po utakmici</div></div>
+            <div className="cards">
+              <div className="mini"><div className="mini-label">Omjer</div><div className="mini-value">{season.record.w}-{season.record.l}{season.record.d ? `-${season.record.d}` : ''}</div><div className="mini-sub">{season.games} utakmica</div></div>
+              <div className="mini"><div className="mini-label">Dano po utakmici</div><div className="mini-value">{season.games ? (season.record.pf / season.games).toFixed(1) : '–'}</div><div className="mini-sub">ukupno {season.record.pf}</div></div>
+              <div className="mini"><div className="mini-label">Primljeno po utakmici</div><div className="mini-value">{season.games ? (season.record.pa / season.games).toFixed(1) : '–'}</div><div className="mini-sub">ukupno {season.record.pa}</div></div>
+              <div className="mini"><div className="mini-label">Razlika</div><div className="mini-value">{season.games ? ((season.record.pf - season.record.pa) / season.games > 0 ? '+' : '') + ((season.record.pf - season.record.pa) / season.games).toFixed(1) : '–'}</div><div className="mini-sub">po utakmici</div></div>
             </div>
 
             {season.rows.length === 0 ? (
@@ -109,7 +101,7 @@ export default function ArchiveScreen({ archive, onDelete, onClose, onShare, sha
                     CSV sezone
                   </button>
                 </div>
-                <div className="panel table-wrap">
+                <div className="stat-panel scroll-x">
                   <table className="stats">
                     <thead>
                       <tr>
@@ -139,7 +131,7 @@ export default function ArchiveScreen({ archive, onDelete, onClose, onShare, sha
                           <td>
                             {r.recent.pts == null ? '–' : r.recent.pts.toFixed(1)}
                             {r.trend != null && Math.abs(r.trend) >= 0.05 && (
-                              <span className={r.trend > 0 ? 'trend-up' : 'trend-down'}>
+                              <span className={r.trend > 0 ? 'pos' : 'neg'}>
                                 {' '}{r.trend > 0 ? '▲' : '▼'}{Math.abs(r.trend).toFixed(1)}
                               </span>
                             )}

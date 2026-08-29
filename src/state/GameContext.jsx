@@ -112,6 +112,11 @@ export function GameProvider({ children }) {
     return removed.length
   }, [game, setGame])
 
+  /** Miče evente zadanog tipa iz jedne grupe (šuterski faul briše pokušaj šuta). */
+  const removeFromGroup = useCallback((group, type) => {
+    setGame((g) => ({ ...g, events: g.events.filter((e) => !(e.group === group && e.type === type)) }))
+  }, [setGame])
+
   /** Rucno postavljanje petorke usred utakmice (ispravak ili nova postava). */
   const setLineup = useCallback((playerIds) => {
     setGame((g) => {
@@ -212,7 +217,7 @@ export function GameProvider({ children }) {
   const value = {
     game, setGame, clock, stats,
     archive, templates, finishGame, deleteArchived, saveTemplate, deleteTemplate,
-    push, pushInto, undo, updateEvent, deleteEvent, setLineup, addPlayer,
+    push, pushInto, undo, updateEvent, deleteEvent, removeFromGroup, setLineup, addPlayer,
     toggleClock, setClock, nextPeriod, setTrackTime,
     endGame: () => setGame((g) => ({ ...g, status: 'finished' })),
     resetGame: () => setGame(null),

@@ -1,598 +1,655 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useGame } from '../state/GameContext.jsx'
 import { EV, TEAM } from '../model/events.js'
 import { shotValue } from '../model/court.js'
+import { fmtClock } from '../model/derive.js'
 import useWakeLock from '../hooks/useWakeLock.js'
 import useIsMobile from '../hooks/useIsMobile.js'
-import Scoreboard from '../components/Scoreboard.jsx'
-import RosterPanel from '../components/RosterPanel.jsx'
-import PlayerChip from '../components/PlayerChip.jsx'
-import ActionPad from '../components/ActionPad.jsx'
-import SubPanel from '../components/SubPanel.jsx'
-import LineupPanel from '../components/LineupPanel.jsx'
-import PlayByPlay from '../components/PlayByPlay.jsx'
-import BoxScore from '../components/BoxScore.jsx'
+import Crest from '../components/Crest.jsx'
 import Court from '../components/Court.jsx'
-import ChainBar from '../components/ChainBar.jsx'
+import PlayerCard from '../components/PlayerCard.jsx'
+import PlayerChip from '../components/PlayerChip.jsx'
+import PromptModal from '../components/PromptModal.jsx'
+import FreeThrowBar from '../components/FreeThrowBar.jsx'
+import ActionPad from '../components/ActionPad.jsx'
+import LineupPanel from '../components/LineupPanel.jsx'
 import EventEditor from '../components/EventEditor.jsx'
-import ShotChart, { positionedShots } from '../components/ShotChart.jsx'
-import AdvancedStats from '../components/AdvancedStats.jsx'
+import PlayByPlay from '../components/PlayByPlay.jsx'
+import StatsTab from '../components/StatsTab.jsx'
+import ClockEditor from '../components/ClockEditor.jsx'
+import { positionedShots } from '../components/ShotChart.jsx'
 
-const SELECTION_TIMEOUT = 8000   // nedovrsen unos se sam ponistava
+const SELECT_TIMEOUT = 8000
 const FOUL_LIMIT = 5
-
-// Koliko dugo lancani upit stoji prije nego sam nestane. Flow slobodnih
-// bacanja nema rok — bacanja traju, a traka ionako ne blokira ostali unos.
-const CHAIN_TIMEOUT = {
-  assist: 5000,
-  rebound: 6000,
-  stolen: 5000,
-  foulcount: 6000,
-  ftwho: 6000,
-  ftcount: 8000,
-  ft: 0,
-}
+const BONUS = 5
+const DRAG_THRESHOLD = 12
 
 export default function GameScreen({ onExit }) {
   const {
-    game, clock, stats, push, pushInto, undo, updateEvent, deleteEvent,
+    game, clock, stats, push, pushInto, undo, updateEvent, deleteEvent, removeFromGroup,
     setLineup, addPlayer, toggleClock, setClock, nextPeriod,
   } = useGame()
+
   const [tab, setTab] = useState('unos')
-  const [statTab, setStatTab] = useState('box')
-  const [mode, setMode] = useState('teren')      // mobitel: teren ili klasicni gumbi
   const [selectedId, setSelectedId] = useState(null)
-  const [pendingShot, setPendingShot] = useState(null)
+  const [pendingShot, setPendingShot] = useState(null)   // { x, y, playerId }
   const [pendingAction, setPendingAction] = useState(null)
   const [chain, setChain] = useState(null)
-  const [subOpen, setSubOpen] = useState(false)
+  const [drag, setDrag] = useState(null)
   const [lineupOpen, setLineupOpen] = useState(false)
-  const [subOutId, setSubOutId] = useState(null)
-  const [editId, setEditId] = useState(null)
   const [benchOpen, setBenchOpen] = useState(false)
-  const [flash, setFlash] = useState(null)
+  const [clockEdit, setClockEdit] = useState(false)
+  const [confirmNext, setConfirmNext] = useState(false)
+  const [editId, setEditId] = useState(null)
+  const [mode, setMode] = useState('teren')
   const [toast, setToast] = useState(null)
+  const [flash, setFlash] = useState(null)
+
   const selTimer = useRef(null)
-  const shotTimer = useRef(null)
-  const actionTimer = useRef(null)
   const chainTimer = useRef(null)
+  const toastTimer = useRef(null)
+  const suppressTap = useRef(0)
   const isMobile = useIsMobile()
 
   useWakeLock(!!game && game.status === 'live')
 
-  const byId = useMemo(
-    () => Object.fromEntries(game.roster.map((p) => [p.id, p])),
-    [game.roster],
-  )
-  const selPlayer = selectedId ? byId[selectedId] : null
-  const selLabel = selPlayer ? `#${selPlayer.number} ${selPlayer.name}` : ''
+  const byId = useMemo(() => Object.fromEntries(game.roster.map((p) => [p.id, p])), [game.roster])
   const onCourt = stats.players.filter((r) => r.onCourt)
   const bench = stats.players.filter((r) => !r.onCourt)
+  const usName = game.weAreHome ? game.homeName : game.awayName
+  const oppName = game.weAreHome ? game.awayName : game.homeName
+  const label = (id) => { const p = byId[id]; return p ? `#${p.number} ${p.name}` : '' }
 
-  // --- automatsko poništavanje nedovršenih unosa ---------------------------
+  // --- povratna informacija -------------------------------------------------
+  const say = useCallback((text, kind = null) => {
+    clearTimeout(toastTimer.current)
+    setToast(text)
+    setFlash({ kind, at: Date.now() })
+    if (navigator.vibrate) { try { navigator.vibrate(22) } catch { /* ignore */ } }
+    toastTimer.current = setTimeout(() => setToast(null), 1600)
+    setTimeout(() => setFlash(null), 300)
+  }, [])
+
+  const openChain = useCallback((next, ms = 0) => {
+    clearTimeout(chainTimer.current)
+    setChain(next)
+    if (next && ms > 0) chainTimer.current = setTimeout(() => setChain(null), ms)
+  }, [])
+
+  /** Sve osim tekućih slobodnih bacanja — ona namjerno preživljavaju druge unose. */
+  const clearChainUnlessFt = useCallback(() => {
+    setChain((c) => (c && c.kind === 'ft' ? c : null))
+  }, [])
+
   useEffect(() => {
     clearTimeout(selTimer.current)
-    if (selectedId && !pendingShot) selTimer.current = setTimeout(() => setSelectedId(null), SELECTION_TIMEOUT)
+    if (selectedId && !pendingShot && !pendingAction) {
+      selTimer.current = setTimeout(() => setSelectedId(null), SELECT_TIMEOUT)
+    }
     return () => clearTimeout(selTimer.current)
-  }, [selectedId, pendingShot])
+  }, [selectedId, pendingShot, pendingAction])
 
-  useEffect(() => {
-    clearTimeout(shotTimer.current)
-    if (pendingShot) shotTimer.current = setTimeout(() => setPendingShot(null), SELECTION_TIMEOUT)
-    return () => clearTimeout(shotTimer.current)
-  }, [pendingShot])
-
-  useEffect(() => {
-    clearTimeout(actionTimer.current)
-    if (pendingAction) actionTimer.current = setTimeout(() => setPendingAction(null), SELECTION_TIMEOUT)
-    return () => clearTimeout(actionTimer.current)
-  }, [pendingAction])
-
-  useEffect(() => {
-    clearTimeout(chainTimer.current)
-    const ms = chain ? CHAIN_TIMEOUT[chain.kind] : 0
-    if (chain && ms > 0) chainTimer.current = setTimeout(() => setChain(null), ms)
-    return () => clearTimeout(chainTimer.current)
-  }, [chain])
-
-  const confirmFeedback = useCallback((kind, text) => {
-    setFlash({ kind, at: Date.now() })
-    setToast({ text, at: Date.now() })
-    if (navigator.vibrate) { try { navigator.vibrate(25) } catch { /* ignore */ } }
-    setTimeout(() => setFlash(null), 300)
-    setTimeout(() => setToast(null), 1700)
-  }, [])
-
-  /** Koji lančani upit slijedi nakon zapisane akcije. */
-  const nextChain = useCallback((spec, group) => {
-    const team = spec.team || TEAM.US
-    const pl = spec.payload || {}
-    if (spec.type === EV.SHOT && pl.value !== 1) {
-      if (team === TEAM.US && pl.made && spec.playerId) return { kind: 'assist', group, shooterId: spec.playerId }
-      if (!pl.made) return { kind: 'rebound', group, byUs: team === TEAM.US }
-    }
-    if (spec.type === EV.TURNOVER && team === TEAM.US && spec.playerId) return { kind: 'stolen', group }
-    if (spec.type === EV.FOUL && team === TEAM.US) return { kind: 'foulcount', group }
-    if (spec.type === EV.FOUL && team === TEAM.OPP) return { kind: 'ftwho', group }
-    return null
-  }, [])
-
-  /** Zapiši akciju (jedna undo-grupa) i otvori lančani upit ako slijedi. */
-  const act = useCallback((specs) => {
+  // --- zapisivanje ----------------------------------------------------------
+  const record = useCallback((specs, opts = {}) => {
     const list = Array.isArray(specs) ? specs : [specs]
-    const first = list[0]
-
-    // Akcija odabrana prije igrača — pričekaj da se tapne igrač.
-    if (first.needsPlayer && !first.playerId) {
-      setChain(null)
-      setPendingShot(null)
-      setPendingAction(list)
-      if (navigator.vibrate) { try { navigator.vibrate(12) } catch { /* ignore */ } }
-      return
-    }
-
-    // Ukradena lopta našeg igrača = izgubljena lopta protivnika (momčadski).
-    const full = [...list]
-    if (first.type === EV.STEAL && (first.team || TEAM.US) === TEAM.US) {
-      full.push({ type: EV.TURNOVER, team: TEAM.OPP, playerId: null })
-    }
-
-    const group = push(full)
-    const kind = first.type === EV.SHOT ? (first.payload?.made ? 'good' : 'bad') : null
-    confirmFeedback(kind, 'Zapisano')
+    const group = opts.group ? (pushInto(opts.group, list), opts.group) : push(list)
     setSelectedId(null)
     setPendingShot(null)
     setPendingAction(null)
-    setChain(nextChain(first, group))
+    say(opts.toast || 'Zapisano', opts.kind)
+    return group
+  }, [push, pushInto, say])
 
-    // Peti prekršaj — igrač mora van, odmah otvori zamjenu.
-    if (first.type === EV.FOUL && (first.team || TEAM.US) === TEAM.US && first.playerId) {
-      const row = stats.players.find((r) => r.player.id === first.playerId)
-      if (row && row.pf + 1 >= FOUL_LIMIT) {
-        setSubOutId(first.playerId)
-        setSubOpen(true)
+  const teamFouls = (side) => stats.teamFouls[clock.period]?.[side] || 0
+
+  const startFT = useCallback((ft) => openChain({ kind: 'ft', idx: 0, ...ft }, 0), [openChain])
+
+  /** Zatvara lanac, ali prvo odradi obaveznu zamjenu ako ju je netko odgodio. */
+  const endChain = useCallback((c) => {
+    if (c && c.foulOut) openChain({ kind: 'subIn', outId: c.foulOut }, 0)
+    else openChain(null)
+  }, [openChain])
+
+  const afterOurShot = useCallback((group, made, value, shooterId) => {
+    if (value === 1) return
+    if (made && shooterId) openChain({ kind: 'assist', group, shooterId, value }, 9000)
+    else if (!made) openChain({ kind: 'rebound', group, byUs: true, shooterId, value }, 10000)
+    else openChain(null)
+  }, [openChain])
+
+  /** Dovrši akciju kad je poznat igrač. */
+  const completeAction = useCallback((spec, pid) => {
+    if (spec.kind === 'shot') {
+      const group = record(
+        [{ type: EV.SHOT, playerId: pid, payload: { made: spec.made, value: spec.value, x: null, y: null } }],
+        { toast: spec.label, kind: spec.made ? 'good' : 'bad' },
+      )
+      afterOurShot(group, spec.made, spec.value, pid)
+      return
+    }
+    if (spec.kind === 'foul') {
+      const row = stats.players.find((r) => r.player.id === pid)
+      const willFoulOut = row && row.pf + 1 >= FOUL_LIMIT
+      const inBonus = teamFouls('us') + 1 >= BONUS
+      const group = record([{ type: EV.FOUL, playerId: pid, payload: { kind: 'personal' } }], { toast: 'Prekršaj' })
+      if (willFoulOut) say('5. prekršaj — obavezna zamjena')
+      // U bonusu bacanja slijede i kad je to igračeva peta osobna; zamjena se
+      // otvori tek kad bacanja završe (`foulOut` putuje kroz lanac).
+      if (inBonus) startFT({ group, shooterId: null, side: 'opp', total: 2, foulOut: willFoulOut ? pid : null })
+      else if (willFoulOut) openChain({ kind: 'subIn', outId: pid }, 0)
+      return
+    }
+    if (spec.kind === 'foulDrawn') {
+      const inBonus = teamFouls('opp') + 1 >= BONUS
+      const group = record(
+        [{ type: EV.FOUL, team: TEAM.OPP, playerId: null, payload: { kind: 'personal' } },
+          { type: EV.FOUL_DRAWN, playerId: pid }],
+        { toast: 'Izborena osobna' },
+      )
+      if (inBonus) startFT({ group, shooterId: pid, side: 'us', total: 2 })
+      return
+    }
+    if (spec.kind === 'steal') {
+      record([{ type: EV.STEAL, playerId: pid }, { type: EV.TURNOVER, team: TEAM.OPP, playerId: null }], { toast: 'Ukradena lopta' })
+      return
+    }
+    record([{ type: spec.type, playerId: pid, payload: spec.payload || {} }], { toast: spec.label })
+  }, [record, afterOurShot, stats.players, startFT, openChain, say]) // eslint-disable-line
+
+  /** Klik na akcijski gumb — dovrši odmah ako je igrač odabran, inače čekaj igrača. */
+  const act = useCallback((spec) => {
+    if (spec.kind === 'team') {
+      record(spec.specs, { toast: spec.toast })
+      return
+    }
+    if (spec.kind === 'oppFoul') {
+      const inBonus = teamFouls('opp') + 1 >= BONUS
+      const group = record([{ type: EV.FOUL, team: TEAM.OPP, playerId: null, payload: { kind: 'personal' } }], { toast: 'Prekršaj protivnika' })
+      openChain({ kind: 'oppFoulWho', group, bonus: inBonus }, 8000)
+      return
+    }
+    if (selectedId) { completeAction(spec, selectedId); return }
+    clearChainUnlessFt()
+    setPendingShot(null)
+    setPendingAction(spec)
+  }, [selectedId, completeAction, record, clearChainUnlessFt, openChain]) // eslint-disable-line
+
+  // --- slobodna bacanja -----------------------------------------------------
+  const recordFT = (made) => {
+    const c = chain
+    if (!c || c.kind !== 'ft') return
+    record(
+      [{ type: EV.SHOT, team: c.side === 'opp' ? TEAM.OPP : TEAM.US, playerId: c.side === 'opp' ? null : c.shooterId, payload: { made, value: 1, x: null, y: null } }],
+      { group: c.group, toast: `SB ${c.idx + 1}/${c.total} ${made ? '✓' : '✗'}`, kind: made ? 'good' : 'bad' },
+    )
+    if (c.idx + 1 < c.total) openChain({ ...c, idx: c.idx + 1 }, 0)
+    else if (!made) openChain({ kind: 'rebound', group: c.group, byUs: c.side !== 'opp', shooterId: null, value: 0, foulOut: c.foulOut }, 10000)
+    else endChain(c)
+  }
+
+  // --- teren ----------------------------------------------------------------
+  const pickPosition = useCallback((x, y) => {
+    clearChainUnlessFt()
+    setPendingAction(null)
+    setPendingShot({ x, y, playerId: selectedId })
+    if (navigator.vibrate) { try { navigator.vibrate(12) } catch { /* ignore */ } }
+  }, [selectedId, clearChainUnlessFt])
+
+  const resolveShot = (made) => {
+    const ps = pendingShot
+    if (!ps || !ps.playerId) return
+    const value = shotValue(ps.x, ps.y)
+    const group = record(
+      [{ type: EV.SHOT, playerId: ps.playerId, payload: { made, value, x: ps.x, y: ps.y } }],
+      { toast: `${value}P ${made ? 'pogodak' : 'promašaj'}`, kind: made ? 'good' : 'bad' },
+    )
+    afterOurShot(group, made, value, ps.playerId)
+  }
+
+  // --- tap na igrača --------------------------------------------------------
+  const tapPlayer = (id) => {
+    if (Date.now() - suppressTap.current < 400) return
+    if (pendingAction) { completeAction(pendingAction, id); return }
+    if (pendingShot && !pendingShot.playerId) { setPendingShot({ ...pendingShot, playerId: id }); return }
+    if (chain) {
+      const c = chain
+      if (c.kind === 'assist') {
+        if (id !== c.shooterId) record([{ type: EV.ASSIST, playerId: id }], { group: c.group, toast: 'Asistencija' })
+        openChain(null); return
       }
-    }
-  }, [push, confirmFeedback, nextChain, stats.players])
-
-  const doUndo = useCallback(() => {
-    const n = undo()
-    confirmFeedback(null, n ? `Poništeno (${n})` : 'Nema što poništiti')
-    setSelectedId(null)
-    setPendingShot(null)
-    setPendingAction(null)
-    setChain(null)
-  }, [undo, confirmFeedback])
-
-  /** Tap na igrača dovršava akciju ili šut koji čeka, inače samo bira igrača. */
-  const selectPlayer = (id) => {
-    if (pendingAction) {
-      act(pendingAction.map((sp) => (sp.needsPlayer ? { ...sp, playerId: id } : sp)))
-      return
-    }
-    if (pendingShot && !pendingShot.playerId) {
-      setPendingShot({ ...pendingShot, playerId: id })
-      return
+      if (c.kind === 'rebound') {
+        record([{ type: EV.REBOUND, playerId: id, payload: { off: c.byUs } }], { group: c.group, toast: `Skok ${c.byUs ? 'napadački' : 'obrambeni'}` })
+        endChain(c); return
+      }
+      if (c.kind === 'oppFoulWho') { completeOppFoulWho(id); return }
+      if (c.kind === 'subOut') { openChain({ kind: 'subIn', outId: id }, 0); return }
+      if (c.kind === 'subIn') {
+        record([{ type: EV.SUB, playerId: null, payload: { outId: c.outId, inId: id } }], { toast: 'Zamjena zapisana' })
+        openChain(null); return
+      }
     }
     setSelectedId((cur) => (cur === id ? null : id))
   }
 
-  // --- unos šuta preko dijagrama -------------------------------------------
-  const pickPosition = useCallback((x, y) => {
-    setChain(null)
+  const completeOppFoulWho = (id) => {
+    const c = chain
+    record([{ type: EV.FOUL_DRAWN, playerId: id }], { group: c.group, toast: 'Izborena osobna' })
+    if (c.bonus) startFT({ group: c.group, shooterId: id, side: 'us', total: 2 })
+    else openChain(null)
+  }
+
+  // --- drag & drop zamjena ---------------------------------------------------
+  const startDrag = (e, id, fromBench) => {
+    if (e.button != null && e.button !== 0) return
+    const sx = e.clientX
+    const sy = e.clientY
+    let active = false
+    const move = (ev) => {
+      if (!active && Math.hypot(ev.clientX - sx, ev.clientY - sy) > DRAG_THRESHOLD) active = true
+      if (!active) return
+      ev.preventDefault()
+      const el = document.elementFromPoint(ev.clientX, ev.clientY)
+      const card = el && el.closest ? el.closest('[data-pid]') : null
+      const wantZone = fromBench ? 'on' : 'bench'
+      const overId = card && card.getAttribute('data-zone') === wantZone ? card.getAttribute('data-pid') : null
+      setDrag({ id, fromBench, x: ev.clientX, y: ev.clientY, overId })
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+      if (!active) return
+      suppressTap.current = Date.now()
+      setDrag((d) => {
+        if (d && d.overId) {
+          const outId = fromBench ? d.overId : id
+          const inId = fromBench ? id : d.overId
+          record([{ type: EV.SUB, playerId: null, payload: { outId, inId } }], { toast: 'Zamjena zapisana' })
+        }
+        return null
+      })
+    }
+    window.addEventListener('pointermove', move, { passive: false })
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+  }
+
+  const doUndo = () => {
+    const n = undo()
+    say(n ? `Poništeno (${n})` : 'Nema što poništiti')
+    setSelectedId(null)
+    setPendingShot(null)
     setPendingAction(null)
-    // Igrač se bira poslije pozicije ako još nije odabran.
-    setPendingShot({ x, y, playerId: selectedId })
-    if (navigator.vibrate) { try { navigator.vibrate(12) } catch { /* ignore */ } }
-  }, [selectedId])
-
-  const resolveShot = (made) => {
-    if (!pendingShot?.playerId) return
-    act({
-      type: EV.SHOT,
-      playerId: pendingShot.playerId,
-      payload: { made, value: shotValue(pendingShot.x, pendingShot.y), x: pendingShot.x, y: pendingShot.y },
-    })
+    openChain(null)
   }
 
-  // --- lančani upiti --------------------------------------------------------
-  const chained = (specs) => {
-    pushInto(chain.group, Array.isArray(specs) ? specs : [specs])
-    confirmFeedback(null, 'Zapisano')
-  }
+  // --- sadržaj upita ---------------------------------------------------------
+  const opt = (key, text, onClick, cls) => ({ key, label: text, onClick, cls })
+  const courtOpts = (fn, exclude) => onCourt
+    .filter((r) => r.player.id !== exclude)
+    .map((r) => opt(r.player.id, `#${r.player.number} ${r.player.name}`, () => fn(r.player.id)))
+  const benchOpts = (fn) => bench.map((r) => opt(r.player.id, `#${r.player.number} ${r.player.name}`, () => fn(r.player.id)))
 
-  /** Slobodno bacanje ide u vlastitu grupu — pojedinačni UNDO po bacanju. */
-  const recordFreeThrow = (made) => {
-    const { side, shooterId, total, idx } = chain
-    push([{
-      type: EV.SHOT,
-      team: side === 'opp' ? TEAM.OPP : TEAM.US,
-      playerId: side === 'opp' ? null : shooterId,
-      payload: { made, value: 1, x: null, y: null },
-    }])
-    confirmFeedback(made ? 'good' : 'bad', `SB ${idx + 1}/${total}`)
-    const last = idx + 1 >= total
-    if (!last) {
-      setChain({ ...chain, idx: idx + 1 })
-    } else if (!made) {
-      // promašeno zadnje bacanje — lopta je živa, pitaj za skok
-      setChain({ kind: 'rebound', group: chain.group, byUs: side !== 'opp' })
-    } else {
-      setChain(null)
+  let prompt = null
+  if (pendingShot) {
+    const v = shotValue(pendingShot.x, pendingShot.y)
+    prompt = pendingShot.playerId
+      ? {
+        title: `${label(pendingShot.playerId)} · šut za ${v}`,
+        options: [
+          opt('in', '✓ POGODAK', () => resolveShot(true), 'good'),
+          opt('out', '✗ PROMAŠAJ', () => resolveShot(false), 'bad'),
+          opt('x', 'Odustani', () => setPendingShot(null), 'ghost'),
+        ],
+        onClose: () => setPendingShot(null),
+      }
+      : {
+        title: `Šut za ${v} — tko je šutirao?`,
+        note: 'ili tapni igrača u popisu',
+        options: [
+          ...courtOpts((id) => setPendingShot({ ...pendingShot, playerId: id })),
+          opt('x', 'Odustani', () => setPendingShot(null), 'ghost'),
+        ],
+        onClose: () => setPendingShot(null),
+      }
+  } else if (pendingAction) {
+    prompt = {
+      title: `${pendingAction.label} — tko?`,
+      note: 'ili tapni igrača u popisu',
+      options: [
+        ...courtOpts((id) => completeAction(pendingAction, id)),
+        ...(bench.length ? benchOpts((id) => completeAction(pendingAction, id)) : []),
+        opt('x', 'Odustani', () => setPendingAction(null), 'ghost'),
+      ],
+      onClose: () => setPendingAction(null),
+    }
+  } else if (chain && chain.kind !== 'ft') {
+    const c = chain
+    if (c.kind === 'assist') {
+      prompt = {
+        title: 'Asistencija?',
+        note: 'ili faul na šutu (and-1)',
+        options: [
+          ...courtOpts((id) => { record([{ type: EV.ASSIST, playerId: id }], { group: c.group, toast: 'Asistencija' }); openChain(null) }, c.shooterId),
+          opt('and1', '+ FAUL (and-1)', () => {
+            record([{ type: EV.FOUL, team: TEAM.OPP, playerId: null, payload: { kind: 'personal' } },
+              { type: EV.FOUL_DRAWN, playerId: c.shooterId }], { group: c.group, toast: 'Koš + faul' })
+            startFT({ group: c.group, shooterId: c.shooterId, side: 'us', total: 1 })
+          }, 'warn'),
+          opt('no', 'Bez asistencije', () => openChain(null), 'ghost'),
+        ],
+        onClose: () => openChain(null),
+      }
+    } else if (c.kind === 'rebound') {
+      const shooterFoul = c.value > 1 && c.shooterId ? [opt('sf', 'ŠUTERSKI FAUL', () => {
+        // FIBA: faul na šutu znači da pokušaj ne postoji — briše se iz iste grupe.
+        removeFromGroup(c.group, EV.SHOT)
+        record([{ type: EV.FOUL, team: TEAM.OPP, playerId: null, payload: { kind: 'personal' } },
+          { type: EV.FOUL_DRAWN, playerId: c.shooterId }], { group: c.group, toast: 'Šuterski faul — pokušaj se briše' })
+        startFT({ group: c.group, shooterId: c.shooterId, side: 'us', total: c.value })
+      }, 'warn')] : []
+      prompt = {
+        title: 'Skok?',
+        note: c.byUs ? 'naš = napadački' : 'naš = obrambeni',
+        options: [
+          ...courtOpts((id) => { record([{ type: EV.REBOUND, playerId: id, payload: { off: c.byUs } }], { group: c.group, toast: 'Skok' }); endChain(c) }),
+          opt('opp', 'Protivnik', () => {
+            record([{ type: EV.REBOUND, team: TEAM.OPP, playerId: null, payload: { off: !c.byUs } }], { group: c.group, toast: 'Skok protivnika' })
+            endChain(c)
+          }),
+          ...shooterFoul,
+          opt('out', 'Van', () => endChain(c), 'ghost'),
+        ],
+        onClose: () => endChain(c),
+      }
+    } else if (c.kind === 'oppFoulWho') {
+      prompt = {
+        title: 'Tko je izborio prekršaj?',
+        note: c.bonus ? 'bonus — slijede 2 slobodna bacanja' : 'ili preskoči ako nije bitno',
+        options: [
+          ...courtOpts((id) => completeOppFoulWho(id)),
+          opt('no', 'Preskoči', () => openChain(null), 'ghost'),
+        ],
+        onClose: () => openChain(null),
+      }
+    } else if (c.kind === 'subOut') {
+      prompt = {
+        title: 'Zamjena — tko izlazi?',
+        options: [...courtOpts((id) => openChain({ kind: 'subIn', outId: id }, 0)), opt('x', 'Odustani', () => openChain(null), 'ghost')],
+        onClose: () => openChain(null),
+      }
+    } else if (c.kind === 'subIn') {
+      prompt = {
+        title: `Izlazi ${label(c.outId)} — tko ulazi?`,
+        options: [
+          ...benchOpts((id) => { record([{ type: EV.SUB, playerId: null, payload: { outId: c.outId, inId: id } }], { toast: 'Zamjena zapisana' }); openChain(null) }),
+          opt('x', 'Odustani', () => openChain(null), 'ghost'),
+        ],
+        onClose: () => openChain(null),
+      }
     }
   }
 
-  const chainView = useMemo(() => {
-    if (!chain) return null
-    const playerOpts = (rows, onPick, cls) => rows.map((r) => ({
-      key: r.player.id,
-      label: `#${r.player.number} ${r.player.name}`,
-      cls,
-      onClick: () => onPick(r.player.id),
-    }))
+  const ft = chain && chain.kind === 'ft' ? chain : null
+  const ftTitle = ft
+    ? `Slobodna bacanja · ${ft.side === 'opp' ? (oppName || 'PROTIVNIK').toUpperCase() : label(ft.shooterId)} — ${ft.idx + 1}/${ft.total}`
+    : ''
 
-    switch (chain.kind) {
-      case 'assist': {
-        const rows = onCourt.filter((r) => r.player.id !== chain.shooterId)
-        return {
-          title: 'Asistencija?',
-          note: 'nestaje za 5 s',
-          options: [
-            ...playerOpts(rows, (id) => { chained({ type: EV.ASSIST, playerId: id }); setChain(null) }),
-            { key: 'no', label: 'Bez asistencije', cls: 'ghost', onClick: () => setChain(null) },
-          ],
-        }
-      }
-      case 'rebound': {
-        const ourOff = chain.byUs   // naš skok nakon našeg promašaja = napadački
-        return {
-          title: 'Skok?',
-          note: ourOff ? 'naš = napadački' : 'naš = obrambeni',
-          options: [
-            ...playerOpts(onCourt, (id) => {
-              chained({ type: EV.REBOUND, playerId: id, payload: { off: ourOff } })
-              setChain(null)
-            }, 'good'),
-            {
-              key: 'opp',
-              label: 'Protivnik',
-              onClick: () => {
-                chained({ type: EV.REBOUND, team: TEAM.OPP, playerId: null, payload: { off: !ourOff } })
-                setChain(null)
-              },
-            },
-            {
-              key: 'out',
-              label: 'Van',
-              cls: 'ghost',
-              onClick: () => { chained({ type: EV.DEADBALL, payload: { reason: 'out' } }); setChain(null) },
-            },
-          ],
-        }
-      }
-      case 'stolen':
-        return {
-          title: 'Ukradena protivnika?',
-          note: 'nestaje za 5 s',
-          options: [
-            {
-              key: 'yes',
-              label: 'DA',
-              cls: 'good',
-              onClick: () => { chained({ type: EV.STEAL, team: TEAM.OPP, playerId: null }); setChain(null) },
-            },
-            { key: 'no', label: 'NE', cls: 'ghost', onClick: () => setChain(null) },
-          ],
-        }
-      case 'foulcount': {
-        const oppBonus = (stats.teamFouls[clock.period]?.us || 0) >= 5
-        return {
-          title: 'Prekršaj na šutu — koliko bacanja protivniku?',
-          note: oppBonus ? 'BONUS — svaki prekršaj nosi 2 bacanja' : undefined,
-          options: [
-            { key: '0', label: 'Bez bacanja', cls: 'ghost', onClick: () => setChain(null) },
-            ...[1, 2, 3].map((n) => ({
-              key: String(n),
-              label: `${n} ${n === 1 ? 'bacanje' : 'bacanja'}`,
-              cls: 'primary',
-              onClick: () => setChain({ kind: 'ft', group: chain.group, side: 'opp', shooterId: null, total: n, idx: 0 }),
-            })),
-          ],
-        }
-      }
-      case 'ftwho': {
-        const usBonus = (stats.teamFouls[clock.period]?.opp || 0) >= 5
-        return {
-          title: 'Slobodna bacanja — tko izvodi?',
-          note: usBonus ? 'BONUS — svaki prekršaj nosi 2 bacanja' : undefined,
-          options: [
-            ...playerOpts(onCourt, (id) => {
-              chained({ type: EV.FOUL_DRAWN, playerId: id })
-              setChain({ kind: 'ftcount', group: chain.group, shooterId: id })
-            }),
-            { key: 'no', label: 'Bez bacanja', cls: 'ghost', onClick: () => setChain(null) },
-          ],
-        }
-      }
-      case 'ftcount': {
-        const p = byId[chain.shooterId]
-        return {
-          title: `#${p?.number} ${p?.name} — koliko bacanja?`,
-          options: [1, 2, 3].map((n) => ({
-            key: String(n),
-            label: `${n} ${n === 1 ? 'bacanje' : 'bacanja'}`,
-            cls: 'primary',
-            onClick: () => setChain({ kind: 'ft', group: chain.group, side: 'us', shooterId: chain.shooterId, total: n, idx: 0 }),
-          })),
-        }
-      }
-      case 'ft': {
-        const p = chain.shooterId ? byId[chain.shooterId] : null
-        const who = p ? `#${p.number} ${p.name}` : (game.awayName || 'Protivnik')
-        return {
-          title: `${who} — ${chain.idx + 1}. od ${chain.total}`,
-          options: [
-            { key: 'in', label: '✓ POGODAK', cls: 'good lg', onClick: () => recordFreeThrow(true) },
-            { key: 'out', label: '✗ PROMAŠAJ', cls: 'bad lg', onClick: () => recordFreeThrow(false) },
-            { key: 'stop', label: 'Prekini', cls: 'ghost', onClick: () => setChain(null) },
-          ],
-        }
-      }
-      default: return null
-    }
-  }, [chain, onCourt, byId, game.awayName, stats.teamFouls, clock.period]) // eslint-disable-line
-
-  const playerLabel = (id) => {
-    const p = byId[id]
-    return p ? `#${p.number} ${p.name}` : ''
-  }
-
-  /** Gumbi igrača na parketu za trake koje čekaju odabir igrača. */
-  const whoOptions = (onPick) => onCourt.map((r) => ({
-    key: r.player.id,
-    label: `#${r.player.number} ${r.player.name}`,
-    onClick: () => onPick(r.player.id),
-  }))
-
+  // --- teren i uputa ---------------------------------------------------------
   const courtShots = useMemo(() => positionedShots(game), [game.events]) // eslint-disable-line
-  const editEvent = editId ? game.events.find((e) => e.id === editId) : null
+  let hint = 'Tapni poziciju šuta, pa igrača'
+  let hintOk = false
+  if (pendingShot) { hint = pendingShot.playerId ? 'Potvrdi ishod' : 'Tko je šutirao? — tapni igrača'; hintOk = true }
+  else if (pendingAction) { hint = `${pendingAction.label} — tapni igrača`; hintOk = true }
+  else if (selectedId) { hint = `${label(selectedId)} — tapni poziciju šuta ili akciju`; hintOk = true }
+
+  const courtBlock = (
+    <>
+      <div className={`hint ${hintOk ? 'ok' : ''}`} style={{ marginBottom: 10 }}>{hint}</div>
+      <div className="court-box">
+        <Court shots={courtShots} pending={pendingShot} onPick={pickPosition} />
+      </div>
+      <div className="court-legend">
+        <span><span className="dot" />pogodak</span>
+        <span><span className="x">✕</span>promašaj</span>
+        <span className="grow" />
+        {!isMobile && <span>2P / 3P se određuje iz pozicije</span>}
+      </div>
+    </>
+  )
 
   const pad = (
     <ActionPad
       game={game}
-      selectedId={selectedId}
-      selectedName={selLabel}
       act={act}
-      compact
-      onOpenSub={() => { setLineupOpen(false); setSubOutId(null); setSubOpen(true) }}
-      onOpenLineup={() => { setSubOpen(false); setLineupOpen(true) }}
+      oppName={oppName}
+      showSub={isMobile}
+      onOpenSub={() => openChain({ kind: 'subOut' }, 0)}
+      onOpenLineup={() => setLineupOpen(true)}
     />
   )
 
-  const openLineup = () => { setSubOpen(false); setLineupOpen(true) }
-
-  const lineupPanel = (
-    <LineupPanel
-      game={game}
-      stats={stats}
-      onSave={(ids) => { setLineup(ids); confirmFeedback(null, 'Postava spremljena') }}
-      onAddPlayer={addPlayer}
-      onClose={() => setLineupOpen(false)}
-    />
-  )
-
-  const courtBlock = (
-    <div className="court-wrap">
-      {!pendingShot && (
-        <div className={`hint ${selectedId ? 'ok' : ''}`}>
-          {selectedId ? `${selLabel} — tapni poziciju` : 'Tapni poziciju šuta, pa igrača'}
-        </div>
-      )}
-      <Court shots={courtShots} pending={pendingShot} onPick={pickPosition} />
-      {!isMobile && (
-        <div className="court-legend">
-          <span><span className="dot" />pogodak</span>
-          <span><span className="x">✕</span>promašaj</span>
-          <span className="grow" />
-          <span>2P/3P se određuje iz pozicije</span>
-        </div>
-      )}
-    </div>
-  )
-
-  const barOpen = !!pendingShot || !!pendingAction || !!chainView
-
-  // Traka na dnu je fiksna — izmjeri je i rezerviraj točno toliko prostora,
-  // da ni teren ni gumbi ne završe ispod nje.
-  const [barH, setBarH] = useState(0)
-  useLayoutEffect(() => {
-    const el = document.querySelector('.prompt-bar')
-    setBarH(el ? el.offsetHeight : 0)
-  }, [pendingShot, chain, isMobile, tab])
-  const barPad = barOpen && barH ? { paddingBottom: barH + 10 } : undefined
+  const editEvent = editId ? game.events.find((e) => e.id === editId) : null
+  const usFouls = teamFouls('us')
+  const oppFouls = teamFouls('opp')
 
   return (
-    <div className="app no-scroll">
-      <Scoreboard
-        game={game}
-        clock={clock}
-        stats={stats}
-        onToggleClock={toggleClock}
-        onSetClock={setClock}
-        onNextPeriod={nextPeriod}
-        compact={isMobile}
-      />
+    <div className="app">
+      {/* --- semafor --- */}
+      <div className="hdr">
+        <div className="hdr-side">
+          <Crest name={usName} small />
+          <div style={{ minWidth: 0 }}>
+            <div className="hdr-name">{usName}</div>
+            <div className="hdr-score">{stats.score.us}</div>
+          </div>
+          <div className="pills">
+            <span className={`pill ${usFouls >= BONUS ? 'hot' : ''}`}>PF {usFouls}</span>
+            {!isMobile && <span className="pill">TO {stats.timeouts.us}</span>}
+          </div>
+        </div>
 
+        <div className="hdr-mid">
+          <div className="hdr-period">{isMobile ? `${clock.period}. Č` : `${clock.period}. četvrtina`}</div>
+          {game.trackTime && (
+            <button
+              className="btn accent"
+              style={{ minHeight: 34, fontFamily: 'var(--f-cond)', fontSize: 20, fontWeight: 700, minWidth: 104 }}
+              onClick={toggleClock}
+              onContextMenu={(e) => { e.preventDefault(); setClockEdit(true) }}
+            >
+              {fmtClock(clock.secs)}
+            </button>
+          )}
+          <div className="row" style={{ gap: 6 }}>
+            {confirmNext ? (
+              <>
+                <button className="btn good" style={{ minHeight: 36 }} onClick={() => { nextPeriod(); setConfirmNext(false); say('Nova četvrtina') }}>Potvrdi</button>
+                <button className="btn ghost" style={{ minHeight: 36 }} onClick={() => setConfirmNext(false)}>Odustani</button>
+              </>
+            ) : (
+              <button className="btn accent" style={{ minHeight: 36 }} onClick={() => setConfirmNext(true)}>
+                {isMobile ? `${clock.period + 1}. Č →` : 'Sljedeća četvrtina →'}
+              </button>
+            )}
+            {game.trackTime && !confirmNext && (
+              <button className="btn ghost" style={{ minHeight: 36 }} onClick={() => setClockEdit(true)}>Sat</button>
+            )}
+          </div>
+        </div>
+
+        <div className="hdr-side right">
+          <div className="pills" style={{ alignItems: 'flex-end' }}>
+            <span className={`pill ${oppFouls >= BONUS ? 'hot' : ''}`}>PF {oppFouls}</span>
+            {!isMobile && <span className="pill">TO {stats.timeouts.opp}</span>}
+          </div>
+          <div style={{ textAlign: 'right', minWidth: 0 }}>
+            <div className="hdr-name">{oppName}</div>
+            <div className="hdr-score">{stats.score.opp}</div>
+          </div>
+          <div className="opp-badge">{(oppName || '?').trim()[0]?.toUpperCase() || '?'}</div>
+        </div>
+      </div>
+
+      {/* --- tabovi --- */}
       <div className="tabs">
         <button className={`tab ${tab === 'unos' ? 'on' : ''}`} onClick={() => setTab('unos')}>Unos</button>
         <button className={`tab ${tab === 'log' ? 'on' : ''}`} onClick={() => setTab('log')}>
-          Log{isMobile ? '' : ` (${game.events.length})`}
+          {isMobile ? 'Log' : `Log · ${game.events.length}`}
         </button>
         <button className={`tab ${tab === 'stat' ? 'on' : ''}`} onClick={() => setTab('stat')}>
           {isMobile ? 'Stat' : 'Statistika'}
         </button>
         <div className="grow" />
-        <button className="btn sm bad" onClick={doUndo} style={{ marginBottom: 5 }}>↶ UNDO</button>
-        <button className="btn sm ghost" onClick={onExit} style={{ marginBottom: 5 }}>☰</button>
+        <button className="btn danger" style={{ minHeight: 38, letterSpacing: '.06em', fontWeight: 700, fontFamily: 'var(--f-ui)', fontSize: 13 }} onClick={doUndo}>↶ UNDO</button>
+        <button className="btn ghost" style={{ minHeight: 38, width: 44, padding: 0 }} onClick={onExit} aria-label="Izbornik">☰</button>
       </div>
 
+      {clockEdit && (
+        <ClockEditor game={game} clock={clock} onClose={() => setClockEdit(false)} onSave={(p, s) => { setClock(p, s); setClockEdit(false) }} />
+      )}
+
+      {/* --- unos --- */}
       {tab === 'unos' && (isMobile ? (
-        <div className="m-wrap" style={barPad}>
+        <div className="m-wrap" style={ft ? { paddingBottom: 96 } : undefined}>
           {onCourt.length === 0 && (
-            <button className="btn bad wide" onClick={openLineup}>
+            <button className="btn danger wide" onClick={() => setLineupOpen(true)}>
               Nema igrača na parketu — postavi petorku
             </button>
           )}
           <div className="m-strip">
             {onCourt.map((r) => (
               <PlayerChip
-                key={r.player.id}
-                row={r}
-                trackTime={game.trackTime}
-                selected={selectedId === r.player.id}
-                onClick={() => selectPlayer(r.player.id)}
+                key={r.player.id} row={r} trackTime={game.trackTime}
+                selected={selectedId === r.player.id} onClick={() => tapPlayer(r.player.id)}
               />
             ))}
           </div>
-
-          <button className="btn sm ghost wide" onClick={() => setBenchOpen((v) => !v)}>
+          <button className="btn ghost wide" style={{ minHeight: 36 }} onClick={() => setBenchOpen((v) => !v)}>
             Klupa ({bench.length}) {benchOpen ? '▲' : '▼'}
           </button>
           {benchOpen && (
             <div className="m-bench">
               {bench.map((r) => (
                 <PlayerChip
-                  key={r.player.id}
-                  row={r}
-                  bench
-                  trackTime={game.trackTime}
-                  selected={selectedId === r.player.id}
-                  onClick={() => selectPlayer(r.player.id)}
+                  key={r.player.id} row={r} bench trackTime={game.trackTime}
+                  selected={selectedId === r.player.id} onClick={() => tapPlayer(r.player.id)}
                 />
               ))}
             </div>
           )}
-
-          {!subOpen && !lineupOpen && (
+          {!lineupOpen && (
             <div className="seg">
               <button className={mode === 'teren' ? 'on' : ''} onClick={() => setMode('teren')}>Teren</button>
               <button className={mode === 'gumbi' ? 'on' : ''} onClick={() => setMode('gumbi')}>Gumbi</button>
             </div>
           )}
-
-          <div className={!subOpen && !lineupOpen && mode === 'teren' ? 'm-pane-court' : 'm-pane-scroll'}>
-            {lineupOpen ? lineupPanel
-              : subOpen
-                ? <SubPanel stats={stats} act={act} initialOutId={subOutId} onClose={() => setSubOpen(false)} />
-                : (mode === 'teren' ? courtBlock : pad)}
+          <div className={!lineupOpen && mode === 'teren' ? 'm-pane-court' : 'm-pane-scroll'}>
+            {lineupOpen ? (
+              <LineupPanel
+                game={game} stats={stats} onAddPlayer={addPlayer}
+                onSave={(ids) => { setLineup(ids); say('Postava spremljena') }}
+                onClose={() => setLineupOpen(false)}
+              />
+            ) : mode === 'teren' ? (
+              <div className="live-col court" style={{ flex: 1 }}>{courtBlock}</div>
+            ) : pad}
           </div>
         </div>
       ) : (
-        <div className="main main3" style={barPad}>
-          <div className="side panel" style={{ padding: 8 }}>
-            <RosterPanel
-              stats={stats}
-              game={game}
-              selectedId={selectedId}
-              onSelect={selectPlayer}
-              onOpenLineup={openLineup}
-            />
+        <div className="live-grid" style={ft ? { paddingBottom: 96 } : undefined}>
+          <div className="live-col scroll">
+            <div className="section-title" style={{ padding: '2px 4px 6px' }}>Na parketu</div>
+            {onCourt.map((r) => (
+              <PlayerCard
+                key={r.player.id} row={r} trackTime={game.trackTime} drag={drag}
+                selected={selectedId === r.player.id}
+                onTap={() => tapPlayer(r.player.id)}
+                onPointerDown={(e) => startDrag(e, r.player.id, false)}
+              />
+            ))}
+            {onCourt.length === 0 && (
+              <div className="hint err">
+                Nema igrača na parketu.
+                <button className="btn wide" style={{ marginTop: 8 }} onClick={() => setLineupOpen(true)}>Postavi petorku</button>
+              </div>
+            )}
+            <div style={{ padding: '10px 4px 6px' }}>
+              <div className="section-title">Klupa</div>
+              <div className="bench-note">Zamjena: povuci igrača na petorku (ili obrnuto)</div>
+            </div>
+            {bench.map((r) => (
+              <PlayerCard
+                key={r.player.id} row={r} bench trackTime={game.trackTime} drag={drag}
+                selected={selectedId === r.player.id}
+                onTap={() => tapPlayer(r.player.id)}
+                onPointerDown={(e) => startDrag(e, r.player.id, true)}
+              />
+            ))}
           </div>
-          <div className="panel court-panel" style={{ padding: 8 }}>
-            {courtBlock}
-          </div>
-          <div className="work">
-            {lineupOpen ? lineupPanel
-              : subOpen
-                ? <SubPanel stats={stats} act={act} initialOutId={subOutId} onClose={() => setSubOpen(false)} />
-                : <div className="panel" style={{ padding: 10 }}>{pad}</div>}
+
+          <div className="live-col court">{courtBlock}</div>
+
+          <div className="live-col" style={{ overflowY: 'auto' }}>
+            {lineupOpen ? (
+              <LineupPanel
+                game={game} stats={stats} onAddPlayer={addPlayer}
+                onSave={(ids) => { setLineup(ids); say('Postava spremljena') }}
+                onClose={() => setLineupOpen(false)}
+              />
+            ) : pad}
           </div>
         </div>
       ))}
 
+      {/* --- log --- */}
       {tab === 'log' && (
-        <div className="scroll-page">
+        <div className="scroll-page" style={ft ? { paddingBottom: 96 } : undefined}>
           {editEvent && (
             <EventEditor
-              game={game}
-              event={editEvent}
-              onSave={(patch) => {
-                updateEvent(editEvent.id, patch)
-                setEditId(null)
-                confirmFeedback(null, 'Izmijenjeno')
-              }}
-              onDelete={() => {
-                deleteEvent(editEvent.id)
-                setEditId(null)
-                confirmFeedback(null, 'Obrisano')
-              }}
+              game={game} event={editEvent}
+              onSave={(patch) => { updateEvent(editEvent.id, patch); setEditId(null); say('Izmijenjeno') }}
+              onDelete={() => { deleteEvent(editEvent.id); setEditId(null); say('Obrisano') }}
               onClose={() => setEditId(null)}
             />
           )}
-          <PlayByPlay game={game} selectedId={editId} onSelectEvent={(ev) => setEditId((c) => (c === ev.id ? null : ev.id))} />
+          <div className="panel" style={{ padding: 8 }}>
+            <PlayByPlay
+              game={game}
+              selectedId={editId}
+              onSelectEvent={(ev) => setEditId((c) => (c === ev.id ? null : ev.id))}
+              onDelete={(ev) => { deleteEvent(ev.id); if (editId === ev.id) setEditId(null); say('Obrisano') }}
+            />
+          </div>
         </div>
       )}
 
+      {/* --- statistika --- */}
       {tab === 'stat' && (
-        <div className="scroll-page">
-          <div className="seg" style={{ marginBottom: 10, maxWidth: 420 }}>
-            <button className={statTab === 'box' ? 'on' : ''} onClick={() => setStatTab('box')}>Box score</button>
-            <button className={statTab === 'shot' ? 'on' : ''} onClick={() => setStatTab('shot')}>Shot chart</button>
-            <button className={statTab === 'adv' ? 'on' : ''} onClick={() => setStatTab('adv')}>Napredno</button>
-          </div>
-          {statTab === 'box' && <BoxScore game={game} stats={stats} />}
-          {statTab === 'shot' && <ShotChart game={game} />}
-          {statTab === 'adv' && <AdvancedStats game={game} stats={stats} />}
+        <div className="scroll-page" style={ft ? { paddingBottom: 96 } : undefined}>
+          <StatsTab game={game} stats={stats} usName={usName} oppName={oppName} />
         </div>
       )}
 
-      {/* trake na dnu: šut ima prednost, pa akcija koja čeka igrača, pa lančani upit */}
-      {pendingShot ? (
-        pendingShot.playerId ? (
-          <div className="prompt-bar">
-            <div className="shot-bar">
-              <span className="who">
-                {playerLabel(pendingShot.playerId)} · {shotValue(pendingShot.x, pendingShot.y)}P
-              </span>
-              <button className="btn good lg b-ok" onClick={() => resolveShot(true)}>✓ POGODAK</button>
-              <button className="btn bad lg b-no" onClick={() => resolveShot(false)}>✗ PROMAŠAJ</button>
-              <button className="btn ghost sm b-cancel" onClick={() => setPendingShot(null)}>Odustani</button>
-            </div>
-          </div>
-        ) : (
-          <ChainBar
-            title={`Šut ${shotValue(pendingShot.x, pendingShot.y)}P — tko je šutirao?`}
-            note="ili tapni igrača u popisu"
-            options={whoOptions((id) => setPendingShot({ ...pendingShot, playerId: id }))}
-            onClose={() => setPendingShot(null)}
-          />
-        )
-      ) : pendingAction ? (
-        <ChainBar
-          title={`${pendingAction[0].label} — tko?`}
-          note="ili tapni igrača u popisu"
-          options={whoOptions((id) => act(pendingAction.map((sp) => (sp.needsPlayer ? { ...sp, playerId: id } : sp))))}
-          onClose={() => setPendingAction(null)}
+      {prompt && (
+        <PromptModal title={prompt.title} note={prompt.note} options={prompt.options} onClose={prompt.onClose} />
+      )}
+
+      {ft && (
+        <FreeThrowBar
+          title={ftTitle}
+          onMade={() => recordFT(true)}
+          onMiss={() => recordFT(false)}
+          onStop={() => endChain(ft)}
         />
-      ) : chainView && (
-        <ChainBar
-          title={chainView.title}
-          note={chainView.note}
-          options={chainView.options}
-          onClose={() => setChain(null)}
-        />
+      )}
+
+      {drag && (
+        <div className="drag-ghost" style={{ left: drag.x, top: drag.y }}>{label(drag.id)}</div>
       )}
 
       {flash && <div className={`flash ${flash.kind || ''}`} key={flash.at} />}
-      {toast && (
-        <div
-          className="toast"
-          key={toast.at}
-          style={isMobile && barOpen && barH ? { bottom: barH + 14 } : undefined}
-        >
-          {toast.text}
-        </div>
-      )}
+      {toast && <div className="toast" style={{ bottom: ft ? 96 : 20 }}>{toast}</div>}
     </div>
   )
 }
