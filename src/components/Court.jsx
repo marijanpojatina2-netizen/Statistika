@@ -33,12 +33,14 @@ export default function Court({ shots = [], pending = null, onPick, interactive 
     onPick(x, y)
   }
 
+  // click, ne pointerdown: modal otvoren usred dodira zatvorio bi duh-klik
+  // istog prsta cim se digne
   return (
     <svg
       ref={(el) => { ref.current = el; if (svgRef) svgRef.current = el }}
       className={`court ${interactive ? 'live' : ''}`}
       viewBox={`0 0 ${W} ${H}`}
-      onPointerDown={interactive ? handle : undefined}
+      onClick={interactive ? handle : undefined}
       style={style}
     >
       <defs>

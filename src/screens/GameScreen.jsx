@@ -52,6 +52,8 @@ export default function GameScreen({ onExit }) {
   const toastTimer = useRef(null)
   const suppressTap = useRef(0)
   const handleDragRef = useRef(false)
+  const scrollColRef = useRef(null)
+  const autoRef = useRef({ raf: 0, vy: 0, x: 0, y: 0, fromBench: false })
   const isMobile = useIsMobile()
   const fullscreen = useFullscreen()
 
@@ -251,6 +253,37 @@ export default function GameScreen({ onExit }) {
     setDrag({ id, fromBench, x, y, overId: null })
   }
 
+  // Popis se sam skrola kad se igraca dovuce blizu ruba stupca — bez toga se
+  // ne moze doci do izmjena koje nisu na ekranu.
+  const autoScrollTick = () => {
+    const a = autoRef.current
+    const el = scrollColRef.current
+    if (!el || a.vy === 0) { a.raf = 0; return }
+    el.scrollTop += a.vy
+    setDrag((d) => (d ? { ...d, overId: targetUnder(a.x, a.y, a.fromBench) } : d))
+    a.raf = requestAnimationFrame(autoScrollTick)
+  }
+  const updateAutoScroll = (x, y, fromBench) => {
+    const a = autoRef.current
+    a.x = x; a.y = y; a.fromBench = fromBench
+    let vy = 0
+    const el = scrollColRef.current
+    if (el) {
+      const r = el.getBoundingClientRect()
+      const EDGE = 70
+      if (y < r.top + EDGE) vy = -Math.min(16, Math.ceil((r.top + EDGE - y) / 4))
+      else if (y > r.bottom - EDGE) vy = Math.min(16, Math.ceil((y - (r.bottom - EDGE)) / 4))
+    }
+    a.vy = vy
+    if (vy !== 0 && !a.raf) a.raf = requestAnimationFrame(autoScrollTick)
+  }
+  const stopAutoScroll = () => {
+    const a = autoRef.current
+    a.vy = 0
+    if (a.raf) cancelAnimationFrame(a.raf)
+    a.raf = 0
+  }
+
   const targetUnder = (x, y, fromBench) => {
     const el = document.elementFromPoint(x, y)
     const card = el && el.closest ? el.closest('[data-pid]') : null
@@ -259,6 +292,7 @@ export default function GameScreen({ onExit }) {
   }
 
   const finishDrag = (id, fromBench) => {
+    stopAutoScroll()
     setDragLock(false)
     suppressTap.current = Date.now()
     setDrag((d) => {
@@ -272,6 +306,7 @@ export default function GameScreen({ onExit }) {
   }
 
   const abortDrag = () => {
+    stopAutoScroll()
     setDragLock(false)
     suppressTap.current = Date.now()
     setDrag(null)
@@ -314,6 +349,7 @@ export default function GameScreen({ onExit }) {
     const move = (ev) => {
       if (ev.pointerId !== pointerId) return
       setDrag({ id, fromBench, x: ev.clientX, y: ev.clientY, overId: targetUnder(ev.clientX, ev.clientY, fromBench) })
+      updateAutoScroll(ev.clientX, ev.clientY, fromBench)
     }
     const up = (ev) => {
       if (ev.pointerId !== pointerId) return
@@ -358,6 +394,7 @@ export default function GameScreen({ onExit }) {
       }
       if (ev.cancelable) ev.preventDefault()
       setDrag({ id, fromBench, x: t.clientX, y: t.clientY, overId: targetUnder(t.clientX, t.clientY, fromBench) })
+      updateAutoScroll(t.clientX, t.clientY, fromBench)
     }
     const end = () => {
       cleanup()
@@ -392,6 +429,7 @@ export default function GameScreen({ onExit }) {
         beginDrag(id, fromBench, ev.clientX, ev.clientY)
       }
       setDrag({ id, fromBench, x: ev.clientX, y: ev.clientY, overId: targetUnder(ev.clientX, ev.clientY, fromBench) })
+      updateAutoScroll(ev.clientX, ev.clientY, fromBench)
     }
     const up = () => {
       cleanup()
@@ -556,6 +594,15 @@ export default function GameScreen({ onExit }) {
     />
   )
 
+  /** Igrač ispod dane točke, i kad je iznad njega modal overlay. */
+  const pidAt = (x, y) => {
+    for (const el of document.elementsFromPoint(x, y)) {
+      const card = el.closest ? el.closest('[data-pid]') : null
+      if (card) return card.getAttribute('data-pid')
+    }
+    return null
+  }
+
   const editEvent = editId ? game.events.find((e) => e.id === editId) : null
   const usFouls = teamFouls('us')
   const oppFouls = teamFouls('opp')
@@ -696,7 +743,7 @@ export default function GameScreen({ onExit }) {
         </div>
       ) : (
         <div className="live-grid" style={ft ? { paddingBottom: 96 } : undefined}>
-          <div className={`live-col scroll ${dragLock ? 'locked' : ''}`}>
+          <div className={`live-col scroll ${dragLock ? 'locked' : ''}`} ref={scrollColRef}>
             <div className="section-title" style={{ padding: '2px 4px 6px' }}>Na parketu</div>
             {onCourt.map((r) => (
               <PlayerCard
@@ -774,7 +821,22 @@ export default function GameScreen({ onExit }) {
       )}
 
       {prompt && (
-        <PromptModal title={prompt.title} note={prompt.note} options={prompt.options} onClose={prompt.onClose} />
+        <PromptModal
+          title={prompt.title}
+          note={prompt.note}
+          options={prompt.options}
+          onClose={prompt.onClose}
+          onOverlay={
+            // upiti koji biraju igraca: tap na igraca u popisu prolazi KROZ overlay
+            (pendingShot && !pendingShot.playerId) || pendingAction || (chain && chain.kind !== 'ft')
+              ? (x, y) => {
+                const pid = pidAt(x, y)
+                if (pid) tapPlayer(pid)
+                else prompt.onClose()
+              }
+              : undefined
+          }
+        />
       )}
 
       {ft && (
