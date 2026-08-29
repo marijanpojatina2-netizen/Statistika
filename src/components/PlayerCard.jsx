@@ -4,7 +4,7 @@ import React from 'react'
  * Kartica igrača u petorci ili na klupi.
  * Nosi `data-pid` / `data-zone` jer drag & drop zamjena traži cilj ispod prsta.
  */
-export default function PlayerCard({ row, bench, selected, drag, trackTime, onTap, onPointerDown }) {
+export default function PlayerCard({ row, bench, selected, drag, trackTime, onTap, onPointerDown, onTouchStart }) {
   const out5 = row.pf >= 5
   const isDragged = drag && drag.id === row.player.id
   const isTarget = drag && drag.fromBench !== bench
@@ -30,6 +30,7 @@ export default function PlayerCard({ row, bench, selected, drag, trackTime, onTa
       data-zone={bench ? 'bench' : 'on'}
       onClick={onTap}
       onPointerDown={onPointerDown}
+      onTouchStart={onTouchStart}
     >
       <span className="pn">{row.player.number}</span>
       <span className="pmain">

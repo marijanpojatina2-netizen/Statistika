@@ -305,6 +305,9 @@ textarea { height: auto; padding: 10px 13px; font-family: var(--f-ui); }
 .live-grid > * { min-width: 0; }
 .live-col { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px; min-height: 0; min-width: 0; }
 .live-col.scroll { overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+/* dok povlačenje traje popis se ne smije skrolati pod prstom */
+.live-col.scroll.locked { touch-action: none; overscroll-behavior: contain; }
+.live-col.scroll.locked .pcard { touch-action: none; }
 .live-col.court { display: flex; flex-direction: column; }
 
 /* --- kartica igrača --------------------------------------------------------- */

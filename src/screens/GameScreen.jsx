@@ -37,6 +37,7 @@ export default function GameScreen({ onExit }) {
   const [pendingAction, setPendingAction] = useState(null)
   const [chain, setChain] = useState(null)
   const [drag, setDrag] = useState(null)
+  const [dragLock, setDragLock] = useState(false)
   const [lineupOpen, setLineupOpen] = useState(false)
   const [benchOpen, setBenchOpen] = useState(false)
   const [clockEdit, setClockEdit] = useState(false)
@@ -241,70 +242,98 @@ export default function GameScreen({ onExit }) {
   }
 
   // --- drag & drop zamjena ---------------------------------------------------
-  // Prstom: kratko povlačenje skrola popis, a povlačenje kreće tek nakon
-  // zadržavanja prsta. Mišem: povlačenje kreće nakon 12 px, kao i prije.
-  const startDrag = (e, id, fromBench) => {
+  // Prstom se prati preko touch evenata: čim prst krene, preglednik pošalje
+  // pointercancel (jer smije skrolati) i povlačenje bi umrlo na pola.
+  // Touch eventi se nastavljaju, a preventDefault na prvom pomaku zaustavi skrol
+  // jer ga zadržavanje prsta još nije pokrenulo.
+  const beginDrag = (id, fromBench, x, y) => {
+    setDragLock(true)
+    if (navigator.vibrate) { try { navigator.vibrate(15) } catch { /* ignore */ } }
+    setDrag({ id, fromBench, x, y, overId: null })
+  }
+
+  const targetUnder = (x, y, fromBench) => {
+    const el = document.elementFromPoint(x, y)
+    const card = el && el.closest ? el.closest('[data-pid]') : null
+    const wantZone = fromBench ? 'on' : 'bench'
+    return card && card.getAttribute('data-zone') === wantZone ? card.getAttribute('data-pid') : null
+  }
+
+  const finishDrag = (id, fromBench) => {
+    setDragLock(false)
+    suppressTap.current = Date.now()
+    setDrag((d) => {
+      if (d && d.overId) {
+        const outId = fromBench ? d.overId : id
+        const inId = fromBench ? id : d.overId
+        record([{ type: EV.SUB, playerId: null, payload: { outId, inId } }], { toast: 'Zamjena zapisana' })
+      }
+      return null
+    })
+  }
+
+  /** Prst: povlačenje kreće nakon zadržavanja, kraći pomak ostaje skrolanje. */
+  const startTouchDrag = (e, id, fromBench) => {
+    if (e.touches.length !== 1) return
+    const t0 = e.touches[0]
+    const idf = t0.identifier
+    const sx = t0.clientX
+    const sy = t0.clientY
+    let active = false
+
+    const pick = (ev) => [...ev.changedTouches, ...ev.touches].find((t) => t.identifier === idf)
+    const cleanup = () => {
+      clearTimeout(hold)
+      window.removeEventListener('touchmove', move)
+      window.removeEventListener('touchend', end)
+      window.removeEventListener('touchcancel', end)
+    }
+    const move = (ev) => {
+      const t = pick(ev)
+      if (!t) return
+      if (!active) {
+        if (Math.hypot(t.clientX - sx, t.clientY - sy) > 10) cleanup()
+        return
+      }
+      if (ev.cancelable) ev.preventDefault()
+      setDrag({ id, fromBench, x: t.clientX, y: t.clientY, overId: targetUnder(t.clientX, t.clientY, fromBench) })
+    }
+    const end = () => {
+      cleanup()
+      if (active) finishDrag(id, fromBench)
+    }
+    const hold = setTimeout(() => { active = true; beginDrag(id, fromBench, sx, sy) }, 260)
+
+    window.addEventListener('touchmove', move, { passive: false })
+    window.addEventListener('touchend', end)
+    window.addEventListener('touchcancel', end)
+  }
+
+  /** Miš: povlačenje kreće nakon 12 px, bez zadržavanja. */
+  const startMouseDrag = (e, id, fromBench) => {
+    if (e.pointerType && e.pointerType !== 'mouse') return
     if (e.button != null && e.button !== 0) return
-    const isTouch = e.pointerType === 'touch' || e.pointerType === 'pen'
     const sx = e.clientX
     const sy = e.clientY
-    const target = e.currentTarget
-    const pointerId = e.pointerId
     let active = false
-    let holdTimer = null
-
     const cleanup = () => {
-      clearTimeout(holdTimer)
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
-      window.removeEventListener('pointercancel', up)
-      window.removeEventListener('touchmove', blockScroll)
     }
-    // Kad povlačenje krene, preglednik ne smije skrolati popis pod prstom.
-    const blockScroll = (ev) => { if (active) ev.preventDefault() }
-
-    const begin = (x, y) => {
-      active = true
-      try { target.setPointerCapture(pointerId) } catch { /* nije nužno */ }
-      if (navigator.vibrate) { try { navigator.vibrate(15) } catch { /* ignore */ } }
-      setDrag({ id, fromBench, x, y, overId: null })
-    }
-
     const move = (ev) => {
-      const dist = Math.hypot(ev.clientX - sx, ev.clientY - sy)
       if (!active) {
-        // Prstom prije zadržavanja: pomak znači da korisnik skrola popis.
-        if (isTouch) { if (dist > 10) cleanup(); return }
-        if (dist > DRAG_THRESHOLD) begin(ev.clientX, ev.clientY)
-        else return
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) <= DRAG_THRESHOLD) return
+        active = true
+        beginDrag(id, fromBench, ev.clientX, ev.clientY)
       }
-      ev.preventDefault()
-      const el = document.elementFromPoint(ev.clientX, ev.clientY)
-      const card = el && el.closest ? el.closest('[data-pid]') : null
-      const wantZone = fromBench ? 'on' : 'bench'
-      const overId = card && card.getAttribute('data-zone') === wantZone ? card.getAttribute('data-pid') : null
-      setDrag({ id, fromBench, x: ev.clientX, y: ev.clientY, overId })
+      setDrag({ id, fromBench, x: ev.clientX, y: ev.clientY, overId: targetUnder(ev.clientX, ev.clientY, fromBench) })
     }
-
     const up = () => {
       cleanup()
-      if (!active) return
-      suppressTap.current = Date.now()
-      setDrag((d) => {
-        if (d && d.overId) {
-          const outId = fromBench ? d.overId : id
-          const inId = fromBench ? id : d.overId
-          record([{ type: EV.SUB, playerId: null, payload: { outId, inId } }], { toast: 'Zamjena zapisana' })
-        }
-        return null
-      })
+      if (active) finishDrag(id, fromBench)
     }
-
-    if (isTouch) holdTimer = setTimeout(() => begin(sx, sy), 260)
-    window.addEventListener('pointermove', move, { passive: false })
+    window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
-    window.addEventListener('pointercancel', up)
-    window.addEventListener('touchmove', blockScroll, { passive: false })
   }
 
   const doUndo = () => {
@@ -602,14 +631,15 @@ export default function GameScreen({ onExit }) {
         </div>
       ) : (
         <div className="live-grid" style={ft ? { paddingBottom: 96 } : undefined}>
-          <div className="live-col scroll">
+          <div className={`live-col scroll ${dragLock ? 'locked' : ''}`}>
             <div className="section-title" style={{ padding: '2px 4px 6px' }}>Na parketu</div>
             {onCourt.map((r) => (
               <PlayerCard
                 key={r.player.id} row={r} trackTime={game.trackTime} drag={drag}
                 selected={selectedId === r.player.id}
                 onTap={() => tapPlayer(r.player.id)}
-                onPointerDown={(e) => startDrag(e, r.player.id, false)}
+                onPointerDown={(e) => startMouseDrag(e, r.player.id, false)}
+                onTouchStart={(e) => startTouchDrag(e, r.player.id, false)}
               />
             ))}
             {onCourt.length === 0 && (
@@ -627,7 +657,8 @@ export default function GameScreen({ onExit }) {
                 key={r.player.id} row={r} bench trackTime={game.trackTime} drag={drag}
                 selected={selectedId === r.player.id}
                 onTap={() => tapPlayer(r.player.id)}
-                onPointerDown={(e) => startDrag(e, r.player.id, true)}
+                onPointerDown={(e) => startMouseDrag(e, r.player.id, true)}
+                onTouchStart={(e) => startTouchDrag(e, r.player.id, true)}
               />
             ))}
           </div>
