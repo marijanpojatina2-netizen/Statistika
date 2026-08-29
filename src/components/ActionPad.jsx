@@ -46,8 +46,8 @@ export default function ActionPad({ game, selectedId, selectedName, act, onOpenS
 
       <div className="section-title">Momčadski / protivnik</div>
       <div className="grid4">
-        <button className="btn" onClick={() => act({ type: EV.REBOUND, playerId: null, payload: { off: true } })}>{L('Mom. skok NAP', 'Mom. N')}</button>
-        <button className="btn" onClick={() => act({ type: EV.REBOUND, playerId: null, payload: { off: false } })}>{L('Mom. skok OBR', 'Mom. O')}</button>
+        <button className="btn" onClick={() => act({ type: EV.REBOUND, playerId: null, payload: { off: true } })}>{L('Mom. skok NAP', 'Mom. NAP')}</button>
+        <button className="btn" onClick={() => act({ type: EV.REBOUND, playerId: null, payload: { off: false } })}>{L('Mom. skok OBR', 'Mom. OBR')}</button>
         <button className="btn" onClick={() => act({ type: EV.TIMEOUT, playerId: null })}>{L('Minuta odmora', 'Time-out')}</button>
         <button className="btn" onClick={onOpenSub}>Zamjena</button>
       </div>

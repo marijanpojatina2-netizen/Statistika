@@ -3,6 +3,7 @@
 // Sve izvedene brojke (box score, shot chart, napredna statistika) racunaju se
 // iz ovog loga. Nista se ne pohranjuje zasebno.
 // ---------------------------------------------------------------------------
+import { shotZone } from './court.js'
 
 export const EV = {
   LINEUP: 'lineup',           // { playerIds: [] }  pocetna petorka / ispravak
@@ -66,13 +67,16 @@ export function undoLast(events) {
 // --- Opisi za play-by-play ---------------------------------------------------
 
 const SHOT_LABEL = { 1: 'SB', 2: '2P', 3: '3P' }
+const ZONE_LABEL = { paint: 'reket', mid: 'poludistanca', corner3: 'kut', top3: 'vrh/krilo' }
 
 export function describeEvent(ev, playerById, game) {
   const p = ev.playerId ? playerById[ev.playerId] : null
   const who = p ? `#${p.number} ${p.name}` : (ev.team === TEAM.OPP ? (game?.awayName || 'Protivnik') : '')
   switch (ev.type) {
-    case EV.SHOT:
-      return `${who} — ${SHOT_LABEL[ev.value]} ${ev.made ? 'POGODAK' : 'promašaj'}`
+    case EV.SHOT: {
+      const zone = ev.x != null && ev.y != null ? ` (${ZONE_LABEL[shotZone(ev.x, ev.y)]})` : ''
+      return `${who} — ${SHOT_LABEL[ev.value]} ${ev.made ? 'POGODAK' : 'promašaj'}${zone}`
+    }
     case EV.REBOUND:
       return `${who} — skok ${ev.off ? 'napadački' : 'obrambeni'}`
     case EV.ASSIST: return `${who} — asistencija`
