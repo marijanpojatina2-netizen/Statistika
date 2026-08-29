@@ -1,8 +1,10 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useRef, useState } from 'react'
 import Court from './Court.jsx'
 import { EV, TEAM } from '../model/events.js'
 import { ZONES, shotZone } from '../model/court.js'
 import { fmtPct } from '../model/derive.js'
+import { svgToPng } from '../model/svgPng.js'
+import { gameFileBase } from '../model/exportCsv.js'
 
 /** Šutevi s pozicijom na terenu (klasični unos gumbima nema poziciju). */
 export function positionedShots(game, { playerId = 'all', period = 'all' } = {}) {
@@ -19,6 +21,8 @@ export function positionedShots(game, { playerId = 'all', period = 'all' } = {})
 export default function ShotChart({ game }) {
   const [playerId, setPlayerId] = useState('all')
   const [period, setPeriod] = useState('all')
+  const [pngError, setPngError] = useState(null)
+  const chartRef = useRef(null)
 
   const periods = useMemo(
     () => [...new Set(game.events.map((e) => e.period))].sort((a, b) => a - b),
@@ -44,7 +48,7 @@ export default function ShotChart({ game }) {
 
   return (
     <div className="shot-layout">
-      <div className="panel" style={{ padding: 10 }}>
+      <div className="panel" style={{ padding: 10 }} ref={chartRef}>
         <div className="court-legend" style={{ marginBottom: 6 }}>
           <span><span className="dot" />pogodak</span>
           <span><span className="x">✕</span>promašaj</span>
@@ -52,6 +56,29 @@ export default function ShotChart({ game }) {
           <span>{made}/{shots.length} {fmtPct(shots.length ? (made / shots.length) * 100 : null, 0)}</span>
         </div>
         <Court shots={shots} interactive={false} style={{ maxWidth: 520, margin: '0 auto' }} />
+        <div className="row" style={{ marginTop: 8 }}>
+          <button
+            className="btn sm ghost"
+            onClick={async () => {
+              const svg = chartRef.current?.querySelector('svg.court')
+              if (!svg) return
+              const who = playerId === 'all'
+                ? 'cijela ekipa'
+                : (() => { const p = game.roster.find((x) => x.id === playerId); return p ? `#${p.number} ${p.name}` : '' })()
+              try {
+                setPngError(null)
+                await svgToPng(svg, `${gameFileBase(game)}-shot-chart.png`, {
+                  title: `${game.homeName} – ${game.awayName} · ${who}${period === 'all' ? '' : ` · ${period}Č`}`,
+                })
+              } catch (err) {
+                setPngError(err.message || 'Spremanje slike nije uspjelo')
+              }
+            }}
+          >
+            Spremi kao PNG
+          </button>
+          {pngError && <span className="muted" style={{ fontSize: 12, color: 'var(--red)' }}>{pngError}</span>}
+        </div>
         {noPos > 0 && (
           <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
             {noPos} {noPos === 1 ? 'šut unesen' : 'šuteva uneseno'} klasičnim gumbima, bez pozicije — ne prikazuje se na dijagramu.

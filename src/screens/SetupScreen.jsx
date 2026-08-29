@@ -4,7 +4,7 @@ import { newGame } from '../model/game.js'
 
 const blank = () => ({ id: newId(), number: '', name: '' })
 
-export default function SetupScreen({ onStart }) {
+export default function SetupScreen({ onStart, templates = [], onSaveTemplate, onDeleteTemplate, onOpenArchive, archiveCount = 0 }) {
   const [homeName, setHomeName] = useState('')
   const [awayName, setAwayName] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
@@ -52,6 +52,38 @@ export default function SetupScreen({ onStart }) {
       ? `Odaberi još ${needStarters - starters.length} ${needStarters - starters.length === 1 ? 'igrača' : 'igrača'} za startnu petorku (tapni na ime dolje).`
       : null
 
+  /** Predložak puni sve osim datuma — sljedeća utakmica kreće u par dodira. */
+  const applyTemplate = (t) => {
+    setHomeName(t.homeName || '')
+    setAwayName(t.awayName || '')
+    setCompetition(t.competition || '')
+    setQuarterLength(t.quarterLength ?? 10)
+    setQuarterCount(t.quarterCount ?? 4)
+    setTrackTime(!!t.trackTime)
+    setTrackOpponentShots(!!t.trackOpponentShots)
+    setWeAreHome(t.weAreHome !== false)
+    const rows = (t.roster || []).map((p) => ({ id: newId(), number: String(p.number), name: p.name }))
+    setRoster(rows.length ? rows : Array.from({ length: 5 }, blank))
+    touched.current = false
+    setStarters(rows.slice(0, 5).map((p) => p.id))
+  }
+
+  const saveAsTemplate = () => {
+    if (!onSaveTemplate || valid.length === 0) return
+    const name = prompt('Naziv predloška:', homeName || 'Naša ekipa')
+    if (!name) return
+    onSaveTemplate({
+      id: newId(),
+      name: name.trim(),
+      savedAt: Date.now(),
+      homeName, awayName, competition,
+      quarterLength: Number(quarterLength) || 10,
+      quarterCount: Number(quarterCount) || 4,
+      trackTime, trackOpponentShots, weAreHome,
+      roster: valid.map((p) => ({ number: p.number, name: p.name.trim() })),
+    })
+  }
+
   const start = () => {
     onStart(newGame({
       homeName: homeName || 'Domaći', awayName: awayName || 'Gosti', date, competition,
@@ -62,7 +94,31 @@ export default function SetupScreen({ onStart }) {
 
   return (
     <div className="setup">
-      <h1 style={{ margin: 0, color: 'var(--blue)' }}>Nova utakmica</h1>
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h1 style={{ margin: 0, color: 'var(--blue-hi)' }}>Nova utakmica</h1>
+        {archiveCount > 0 && (
+          <button className="btn" onClick={onOpenArchive}>Arhiva i sezona ({archiveCount})</button>
+        )}
+      </div>
+
+      {templates.length > 0 && (
+        <div className="panel" style={{ padding: 12 }}>
+          <div className="section-title">Predlošci — tap puni ekipe i roster</div>
+          <div className="col" style={{ gap: 6, marginTop: 8 }}>
+            {templates.map((t) => (
+              <div className="row" key={t.id}>
+                <button className="btn grow" style={{ justifyContent: 'flex-start' }} onClick={() => applyTemplate(t)}>
+                  {t.name}
+                  <span className="muted" style={{ fontWeight: 600, fontSize: 12 }}>
+                    · {(t.roster || []).length} igrača{t.competition ? ` · ${t.competition}` : ''}
+                  </span>
+                </button>
+                <button className="btn sm ghost" onClick={() => onDeleteTemplate && onDeleteTemplate(t.id)} aria-label="Obriši predložak">✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="panel" style={{ padding: 12 }}>
         <div className="grid-form">
@@ -117,7 +173,10 @@ export default function SetupScreen({ onStart }) {
       <div className="panel" style={{ padding: 12 }}>
         <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
           <div className="section-title">Naš roster ({valid.length} igrača)</div>
-          <button className="btn sm" onClick={addRow}>+ Dodaj igrača</button>
+          <div className="row" style={{ gap: 6 }}>
+            <button className="btn sm ghost" disabled={valid.length === 0} onClick={saveAsTemplate}>Spremi kao predložak</button>
+            <button className="btn sm" onClick={addRow}>+ Dodaj igrača</button>
+          </div>
         </div>
         <div className="col">
           {roster.map((p) => (

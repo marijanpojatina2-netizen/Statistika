@@ -481,3 +481,8 @@ table.stats tr.on td { background: rgba(46, 139, 245, .06); }
   display: inline-block; width: 10px; height: 10px; border-radius: 3px;
   margin-right: 8px; vertical-align: -1px;
 }
+
+.chip.win { background: rgba(53,168,106,.2); color: #6EE7A0; border-color: var(--green-line); }
+.chip.loss { background: rgba(251,122,133,.15); color: var(--red); border-color: var(--red-line); }
+.trend-up { color: #6EE7A0; font-weight: 800; }
+.trend-down { color: var(--red); font-weight: 800; }

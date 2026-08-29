@@ -15,6 +15,9 @@ sve izvedene brojke.
 - `src/model/game.js` — nova utakmica, stanje sata
 - `src/model/court.js` — FIBA geometrija terena, 2P/3P i zone iz pozicije
 - `src/state/GameContext.jsx` — unos evenata + automatsko spremanje u localStorage
+- `src/model/season.js` — sezonski agregat preko arhiviranih utakmica
+- `src/model/exportCsv.js` — CSV izvoz i sažetak za dijeljenje
+- `src/model/svgPng.js` — shot chart kao PNG slika
 
 Svaki unos može biti **grupa evenata** (npr. šut + asistencija, ukradena +
 izgubljena protivnika). UNDO briše cijelu zadnju grupu odjednom. Iznimka su
@@ -50,4 +53,21 @@ Jednokratno treba uključiti Pages: **Settings → Pages → Source: GitHub Acti
       OR%/DR%, TO ratio, udio poena po izvoru, vodstva i serije) i uređivanje
       evenata u play-by-playu (`src/components/AdvancedStats.jsx`,
       `src/components/EventEditor.jsx`)
-- [ ] Faza 5 — predlošci, arhiva, sezonska statistika, CSV/PNG export, dijeljenje
+- [x] **Faza 5** — predlošci rostera, arhiva utakmica, sezonski prosjeci s
+      trendom zadnjih 5 utakmica, CSV izvoz (box score, play-by-play, sezona),
+      shot chart kao PNG i tekstualni sažetak za dijeljenje
+      (`src/model/exportCsv.js`, `src/model/season.js`, `src/model/svgPng.js`,
+      `src/screens/ArchiveScreen.jsx`)
+
+## Podaci u pregledniku
+
+Sve živi u `localStorage` istog preglednika i profila:
+
+| Ključ | Sadržaj |
+|---|---|
+| `ks.current` | utakmica koja je u tijeku (sprema se nakon svakog eventa) |
+| `ks.archive` | završene utakmice s cijelim event logom |
+| `ks.templates` | predlošci ekipa i rostera |
+
+Brisanje podataka preglednika briše i ovo, pa je pametno nakon utakmice
+izvesti CSV. Arhiva se ne sinkronizira između uređaja.

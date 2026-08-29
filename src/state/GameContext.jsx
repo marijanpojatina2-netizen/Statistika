@@ -2,13 +2,18 @@ import React, { createContext, useContext, useCallback, useEffect, useMemo, useR
 import { EV, TEAM, makeEvent, undoLast, newId } from '../model/events.js'
 import { derive } from '../model/derive.js'
 import { liveClock } from '../model/game.js'
-import { loadCurrent, saveCurrent, clearCurrent } from '../model/storage.js'
+import {
+  loadCurrent, saveCurrent, clearCurrent,
+  loadArchive, saveArchive, loadTemplates, saveTemplates,
+} from '../model/storage.js'
 
 const Ctx = createContext(null)
 export const useGame = () => useContext(Ctx)
 
 export function GameProvider({ children }) {
   const [game, setGameRaw] = useState(() => loadCurrent())
+  const [archive, setArchiveState] = useState(() => loadArchive())
+  const [templates, setTemplatesState] = useState(() => loadTemplates())
   const [tick, setTick] = useState(0)
 
   // Automatsko spremanje nakon SVAKE promjene.
@@ -137,8 +142,38 @@ export function GameProvider({ children }) {
     setGame((g) => ({ ...g, trackTime: value, clock: { ...g.clock, running: false, startedAt: null } }))
   }, [setGame])
 
+  // --- arhiva i predlošci ---------------------------------------------------
+
+  const finishGame = useCallback(() => {
+    if (!game) return
+    const done = { ...game, status: 'finished', finishedAt: Date.now() }
+    const next = [done, ...archive.filter((g) => g.id !== done.id)]
+    saveArchive(next)
+    setArchiveState(next)
+    setGame(null)
+  }, [game, archive, setGame])
+
+  const deleteArchived = useCallback((id) => {
+    const next = archive.filter((g) => g.id !== id)
+    saveArchive(next)
+    setArchiveState(next)
+  }, [archive])
+
+  const saveTemplate = useCallback((tpl) => {
+    const next = [tpl, ...templates.filter((t) => t.id !== tpl.id)]
+    saveTemplates(next)
+    setTemplatesState(next)
+  }, [templates])
+
+  const deleteTemplate = useCallback((id) => {
+    const next = templates.filter((t) => t.id !== id)
+    saveTemplates(next)
+    setTemplatesState(next)
+  }, [templates])
+
   const value = {
     game, setGame, clock, stats,
+    archive, templates, finishGame, deleteArchived, saveTemplate, deleteTemplate,
     push, pushInto, undo, updateEvent, deleteEvent,
     toggleClock, setClock, nextPeriod, setTrackTime,
     endGame: () => setGame((g) => ({ ...g, status: 'finished' })),
