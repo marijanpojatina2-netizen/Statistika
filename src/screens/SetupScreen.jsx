@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { newId } from '../model/events.js'
 import { newGame } from '../model/game.js'
 
@@ -18,7 +18,17 @@ export default function SetupScreen({ onStart }) {
   const [starters, setStarters] = useState([])
 
   const valid = roster.filter((p) => p.name.trim() && String(p.number).trim())
-  const canStart = valid.length >= 5 && starters.length === 5
+  // Manje od 5 igraca (trening, 3x3) je dopusteno — trazi se onoliko koliko ih ima.
+  const needStarters = Math.min(5, valid.length)
+  const canStart = valid.length > 0 && starters.length === needStarters
+
+  const touched = useRef(false)
+
+  // Prijedlog startne petorke: prvih 5 upisanih. Korisnik ga slobodno mijenja.
+  useEffect(() => {
+    if (touched.current || valid.length < 5 || starters.length > 0) return
+    setStarters(valid.slice(0, 5).map((p) => p.id))
+  }, [valid.length]) // eslint-disable-line
 
   const setRow = (id, patch) => setRoster((r) => r.map((p) => (p.id === id ? { ...p, ...patch } : p)))
   const addRow = () => setRoster((r) => [...r, blank()])
@@ -27,9 +37,20 @@ export default function SetupScreen({ onStart }) {
     setStarters((s) => s.filter((x) => x !== id))
   }
 
-  const toggleStarter = (id) => setStarters((s) => (
-    s.includes(id) ? s.filter((x) => x !== id) : (s.length >= 5 ? s : [...s, id])
-  ))
+  const toggleStarter = (id) => {
+    touched.current = true
+    setStarters((s) => (
+      s.includes(id) ? s.filter((x) => x !== id) : (s.length >= needStarters ? s : [...s, id])
+    ))
+  }
+  const pickFirstFive = () => { touched.current = true; setStarters(valid.slice(0, needStarters).map((p) => p.id)) }
+  const clearStarters = () => { touched.current = true; setStarters([]) }
+
+  const blockReason = valid.length === 0
+    ? 'Upiši barem jednog igrača — broj dresa i ime.'
+    : starters.length < needStarters
+      ? `Odaberi još ${needStarters - starters.length} ${needStarters - starters.length === 1 ? 'igrača' : 'igrača'} za startnu petorku (tapni na ime dolje).`
+      : null
 
   const start = () => {
     onStart(newGame({
@@ -109,21 +130,37 @@ export default function SetupScreen({ onStart }) {
         </div>
       </div>
 
-      <div className="panel" style={{ padding: 12 }}>
-        <div className="section-title">Startna petorka — odaberi 5 ({starters.length}/5)</div>
-        <div className="grid4" style={{ marginTop: 8 }}>
-          {valid.map((p) => (
-            <button
-              key={p.id}
-              className={`btn ${starters.includes(p.id) ? 'primary' : ''}`}
-              onClick={() => toggleStarter(p.id)}
-            >
-              #{p.number} {p.name}
-            </button>
-          ))}
+      <div
+        className="panel"
+        style={{ padding: 12, borderColor: starters.length === needStarters && needStarters > 0 ? 'var(--green)' : 'var(--red)', borderWidth: 2 }}
+      >
+        <div className="row wrap" style={{ justifyContent: 'space-between' }}>
+          <div className="section-title">
+            Startna petorka — tapni imena ({starters.length}/{needStarters || 5})
+          </div>
+          <div className="row" style={{ gap: 6 }}>
+            <button className="btn sm ghost" onClick={pickFirstFive} disabled={valid.length === 0}>Prvih {needStarters || 5}</button>
+            <button className="btn sm ghost" onClick={clearStarters} disabled={starters.length === 0}>Očisti</button>
+          </div>
         </div>
-        {valid.length < 5 && <div className="muted" style={{ marginTop: 8 }}>Upiši barem 5 igrača (broj + ime).</div>}
+        <div className="grid4" style={{ marginTop: 8 }}>
+          {valid.map((p) => {
+            const on = starters.includes(p.id)
+            return (
+              <button key={p.id} className={`btn ${on ? 'primary' : ''}`} onClick={() => toggleStarter(p.id)}>
+                {on ? '✓ ' : ''}#{p.number} {p.name}
+              </button>
+            )
+          })}
+        </div>
+        {valid.length === 0 && <div className="muted" style={{ marginTop: 8 }}>Prvo upiši igrače u roster iznad.</div>}
       </div>
+
+      {blockReason && (
+        <div className="hint" style={{ background: 'var(--red-soft)', borderColor: 'var(--red)', color: 'var(--red)' }}>
+          {blockReason}
+        </div>
+      )}
 
       <button className="btn primary lg wide" disabled={!canStart} onClick={start}>
         Pokreni utakmicu
