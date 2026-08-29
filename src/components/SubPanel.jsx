@@ -1,9 +1,9 @@
 import React, { useState } from 'react'
 import { EV } from '../model/events.js'
 
-export default function SubPanel({ stats, onClose, act }) {
+export default function SubPanel({ stats, onClose, act, initialOutId = null }) {
   const [pairs, setPairs] = useState([])   // [{outId, inId}]
-  const [outId, setOutId] = useState(null)
+  const [outId, setOutId] = useState(initialOutId)
 
   const usedOut = new Set(pairs.map((p) => p.outId))
   const usedIn = new Set(pairs.map((p) => p.inId))

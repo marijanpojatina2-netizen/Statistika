@@ -16,8 +16,10 @@ sve izvedene brojke.
 - `src/model/court.js` — FIBA geometrija terena, 2P/3P i zone iz pozicije
 - `src/state/GameContext.jsx` — unos evenata + automatsko spremanje u localStorage
 
-Svaki unos može biti **grupa evenata** (npr. šut + asistencija). UNDO briše
-cijelu zadnju grupu odjednom.
+Svaki unos može biti **grupa evenata** (npr. šut + asistencija, ukradena +
+izgubljena protivnika). UNDO briše cijelu zadnju grupu odjednom. Iznimka su
+slobodna bacanja: svako ide u vlastitu grupu da se krivo upisano bacanje može
+poništiti bez brisanja prekršaja i ostatka serije.
 
 ## Pokretanje
 
@@ -40,6 +42,9 @@ Jednokratno treba uključiti Pages: **Settings → Pages → Source: GitHub Acti
 - [x] **Faza 2** — dijagram terena (FIBA mjere) za unos šuteva u 3 dodira,
       automatsko određivanje 2P/3P iz pozicije, shot chart s filtrima i
       postocima po zonama (`src/model/court.js`, `src/components/Court.jsx`)
-- [ ] Faza 3 — lančani upiti (asistencija / skok / slobodna bacanja)
+- [x] **Faza 3** — lančani upiti: asistencija nakon pogotka, skok nakon
+      promašaja, automatska izgubljena protivniku nakon ukradene, upit za
+      ukradenu nakon izgubljene, flow slobodnih bacanja, otvaranje zamjene na
+      peti prekršaj (`src/components/ChainBar.jsx`)
 - [ ] Faza 4 — napredna statistika, uređivanje evenata u logu
 - [ ] Faza 5 — predlošci, arhiva, sezonska statistika, CSV/PNG export, dijeljenje
