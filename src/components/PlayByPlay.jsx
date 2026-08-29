@@ -2,7 +2,7 @@ import React, { useMemo } from 'react'
 import { EV, TEAM, describeEvent } from '../model/events.js'
 import { fmtClock } from '../model/derive.js'
 
-export default function PlayByPlay({ game, onSelectEvent }) {
+export default function PlayByPlay({ game, onSelectEvent, selectedId }) {
   const byId = useMemo(() => Object.fromEntries(game.roster.map((p) => [p.id, p])), [game.roster])
 
   // redni broj unutar cetvrtine (za nacin bez vremena)
@@ -26,7 +26,7 @@ export default function PlayByPlay({ game, onSelectEvent }) {
         return (
           <button
             key={ev.id}
-            className={`pbp-item ${cls} ${ev.team === TEAM.OPP ? 'opp' : ''}`}
+            className={`pbp-item ${cls} ${ev.team === TEAM.OPP ? 'opp' : ''} ${selectedId === ev.id ? 'sel' : ''}`}
             onClick={() => onSelectEvent && onSelectEvent(ev)}
           >
             <span className="t">

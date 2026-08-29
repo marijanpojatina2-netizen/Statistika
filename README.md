@@ -46,5 +46,8 @@ Jednokratno treba uključiti Pages: **Settings → Pages → Source: GitHub Acti
       promašaja, automatska izgubljena protivniku nakon ukradene, upit za
       ukradenu nakon izgubljene, flow slobodnih bacanja, otvaranje zamjene na
       peti prekršaj (`src/components/ChainBar.jsx`)
-- [ ] Faza 4 — napredna statistika, uređivanje evenata u logu
+- [x] **Faza 4** — napredna statistika (eFG%, TS%, procjena posjeda, PPP,
+      OR%/DR%, TO ratio, udio poena po izvoru, vodstva i serije) i uređivanje
+      evenata u play-by-playu (`src/components/AdvancedStats.jsx`,
+      `src/components/EventEditor.jsx`)
 - [ ] Faza 5 — predlošci, arhiva, sezonska statistika, CSV/PNG export, dijeljenje

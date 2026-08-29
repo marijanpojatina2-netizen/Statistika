@@ -2,6 +2,7 @@
 // Sve izvedene brojke racunaju se ovdje, iskljucivo iz event loga.
 // ---------------------------------------------------------------------------
 import { EV, TEAM } from './events.js'
+import { shotZone } from './court.js'
 
 export function emptyLine() {
   return {
@@ -44,6 +45,9 @@ export function derive(game, now) {
   // vodstva / serije
   let largestLead = { us: 0, opp: 0 }
   let run = { team: null, points: 0 }
+
+  // poeni iz reketa — mjerljivo samo za šuteve unesene preko dijagrama
+  const paint = { pts: 0, positionedMade: 0, positionedAtt: 0 }
 
   const flush = (clock) => {
     if (!tracking || clock == null) return
@@ -103,6 +107,13 @@ export function derive(game, now) {
         const madeKey = ev.value === 1 ? 'ftm' : ev.value === 3 ? 'fg3m' : 'fg2m'
         const attKey = ev.value === 1 ? 'fta' : ev.value === 3 ? 'fg3a' : 'fg2a'
         bag[attKey] += 1
+        if (isUs && ev.value !== 1 && ev.x != null) {
+          paint.positionedAtt += 1
+          if (ev.made) {
+            paint.positionedMade += 1
+            if (shotZone(ev.x, ev.y) === 'paint') paint.pts += ev.value
+          }
+        }
         if (ev.made) {
           bag[madeKey] += 1
           bag.pts += ev.value
@@ -157,6 +168,8 @@ export function derive(game, now) {
   }
 
   const playerRows = game.roster.map((p) => ({ player: p, ...finish(lines[p.id]), onCourt: onCourt.has(p.id) }))
+  const teamTotals = sumRows(playerRows, team)
+  const oppTotals = finish(opp)
 
   return {
     score,
@@ -166,11 +179,39 @@ export function derive(game, now) {
     onCourt: [...onCourt],
     players: playerRows,
     team: finish(team),
-    opp: finish(opp),
-    teamTotals: sumRows(playerRows, team),
+    opp: oppTotals,
+    teamTotals,
+    advanced: {
+      us: advanced(teamTotals, oppTotals),
+      opp: advanced(oppTotals, teamTotals),
+      paint,
+      share: {
+        paint: teamTotals.pts ? (paint.pts / teamTotals.pts) * 100 : null,
+        three: teamTotals.pts ? ((teamTotals.fg3m * 3) / teamTotals.pts) * 100 : null,
+        ft: teamTotals.pts ? (teamTotals.ftm / teamTotals.pts) * 100 : null,
+      },
+    },
     largestLead,
     run,
     timeouts: { us: team.timeouts, opp: opp.timeouts },
+  }
+}
+
+/**
+ * Napredni pokazatelji. Posjedi po standardnoj procjeni:
+ *   POSS = ŠUT IZ IGRE - napadački skok + izgubljene + 0,44 x slobodna bacanja
+ */
+export function advanced(t, other) {
+  const scoringPoss = t.fga + 0.44 * t.fta
+  const poss = t.fga - t.oreb + t.tov + 0.44 * t.fta
+  return {
+    poss,
+    ppp: poss > 0 ? t.pts / poss : null,
+    tsPct: scoringPoss > 0 ? (t.pts / (2 * scoringPoss)) * 100 : null,
+    efgPct: t.efgPct,
+    toRatio: poss > 0 ? (t.tov / poss) * 100 : null,
+    orPct: (t.oreb + other.dreb) > 0 ? (t.oreb / (t.oreb + other.dreb)) * 100 : null,
+    drPct: (t.dreb + other.oreb) > 0 ? (t.dreb / (t.dreb + other.oreb)) * 100 : null,
   }
 }
 

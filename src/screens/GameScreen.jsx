@@ -13,7 +13,9 @@ import PlayByPlay from '../components/PlayByPlay.jsx'
 import BoxScore from '../components/BoxScore.jsx'
 import Court from '../components/Court.jsx'
 import ChainBar from '../components/ChainBar.jsx'
+import EventEditor from '../components/EventEditor.jsx'
 import ShotChart, { positionedShots } from '../components/ShotChart.jsx'
+import AdvancedStats from '../components/AdvancedStats.jsx'
 
 const SELECTION_TIMEOUT = 8000   // nedovrsen unos se sam ponistava
 const FOUL_LIMIT = 5
@@ -31,7 +33,7 @@ const CHAIN_TIMEOUT = {
 }
 
 export default function GameScreen({ onExit }) {
-  const { game, clock, stats, push, pushInto, undo, toggleClock, setClock, nextPeriod } = useGame()
+  const { game, clock, stats, push, pushInto, undo, updateEvent, deleteEvent, toggleClock, setClock, nextPeriod } = useGame()
   const [tab, setTab] = useState('unos')
   const [statTab, setStatTab] = useState('box')
   const [mode, setMode] = useState('teren')      // mobitel: teren ili klasicni gumbi
@@ -40,6 +42,7 @@ export default function GameScreen({ onExit }) {
   const [chain, setChain] = useState(null)
   const [subOpen, setSubOpen] = useState(false)
   const [subOutId, setSubOutId] = useState(null)
+  const [editId, setEditId] = useState(null)
   const [benchOpen, setBenchOpen] = useState(false)
   const [flash, setFlash] = useState(null)
   const [toast, setToast] = useState(null)
@@ -307,6 +310,7 @@ export default function GameScreen({ onExit }) {
   }, [chain, onCourt, byId, game.awayName, stats.teamFouls, clock.period]) // eslint-disable-line
 
   const courtShots = useMemo(() => positionedShots(game), [game.events]) // eslint-disable-line
+  const editEvent = editId ? game.events.find((e) => e.id === editId) : null
 
   const pad = (
     <ActionPad
@@ -437,17 +441,37 @@ export default function GameScreen({ onExit }) {
 
       {tab === 'log' && (
         <div className="scroll-page">
-          <PlayByPlay game={game} />
+          {editEvent && (
+            <EventEditor
+              game={game}
+              event={editEvent}
+              onSave={(patch) => {
+                updateEvent(editEvent.id, patch)
+                setEditId(null)
+                confirmFeedback(null, 'Izmijenjeno')
+              }}
+              onDelete={() => {
+                deleteEvent(editEvent.id)
+                setEditId(null)
+                confirmFeedback(null, 'Obrisano')
+              }}
+              onClose={() => setEditId(null)}
+            />
+          )}
+          <PlayByPlay game={game} selectedId={editId} onSelectEvent={(ev) => setEditId((c) => (c === ev.id ? null : ev.id))} />
         </div>
       )}
 
       {tab === 'stat' && (
         <div className="scroll-page">
-          <div className="seg" style={{ marginBottom: 10, maxWidth: 320 }}>
+          <div className="seg" style={{ marginBottom: 10, maxWidth: 420 }}>
             <button className={statTab === 'box' ? 'on' : ''} onClick={() => setStatTab('box')}>Box score</button>
             <button className={statTab === 'shot' ? 'on' : ''} onClick={() => setStatTab('shot')}>Shot chart</button>
+            <button className={statTab === 'adv' ? 'on' : ''} onClick={() => setStatTab('adv')}>Napredno</button>
           </div>
-          {statTab === 'box' ? <BoxScore game={game} stats={stats} /> : <ShotChart game={game} />}
+          {statTab === 'box' && <BoxScore game={game} stats={stats} />}
+          {statTab === 'shot' && <ShotChart game={game} />}
+          {statTab === 'adv' && <AdvancedStats game={game} stats={stats} />}
         </div>
       )}
 
