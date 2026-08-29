@@ -1,7 +1,14 @@
 import React, { useRef, useState } from 'react'
 import { fmtClock } from '../model/derive.js'
 
-export default function Scoreboard({ game, clock, stats, onToggleClock, onSetClock, onNextPeriod }) {
+/** Grb-nadomjestak: inicijali kluba (npr. "KK Zagreb" -> "KZ"). */
+function initials(name) {
+  const words = (name || '').split(/\s+/).filter(Boolean).filter((w) => !/^kk$/i.test(w))
+  const src = words.length ? words : (name || '?').split(/\s+/).filter(Boolean)
+  return src.slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?'
+}
+
+export default function Scoreboard({ game, clock, stats, onToggleClock, onSetClock, onNextPeriod, compact }) {
   const [editing, setEditing] = useState(false)
   const [confirmNext, setConfirmNext] = useState(false)
   const holdRef = useRef(null)
@@ -35,19 +42,23 @@ export default function Scoreboard({ game, clock, stats, onToggleClock, onSetClo
 
   return (
     <>
-      <div className="scoreboard">
+      <div className={`scoreboard ${compact ? 'compact' : ''}`}>
         <div className="sb-team">
-          <div className="sb-name">{leftName}</div>
-          <div className="sb-score">{leftScore}</div>
-          <div className="row wrap" style={{ gap: 4, marginTop: 2 }}>
-            {foulChip(game.weAreHome ? usFouls : oppFouls, 'PF')}
-            {game.weAreHome && <span className="chip">TO {stats.timeouts.us}</span>}
+          <div className="sb-txt">
+            <div className="sb-name">{leftName}</div>
+            <div className="sb-score">{leftScore}</div>
+            <div className="row wrap" style={{ gap: 4, marginTop: 2 }}>
+              {foulChip(game.weAreHome ? usFouls : oppFouls, 'PF')}
+              {game.weAreHome && <span className="chip">TO {stats.timeouts.us}</span>}
+            </div>
           </div>
+          <div className="sb-crest">{initials(leftName)}</div>
         </div>
 
         <div className="sb-mid">
-          <div className="sb-period">{p}. četvrtina</div>
-          {game.trackTime ? (
+          <div className="sb-period">{compact ? `${p}. Č` : `${p}. četvrtina`}</div>
+
+          {game.trackTime && (
             <button
               className={`sb-clock ${game.clock.running ? 'running' : ''}`}
               onPointerDown={down}
@@ -56,39 +67,48 @@ export default function Scoreboard({ game, clock, stats, onToggleClock, onSetClo
             >
               {fmtClock(clock.secs)}
             </button>
-          ) : (
-            confirmNext ? (
-              <div className="row" style={{ gap: 6 }}>
-                <button className="btn good" onClick={() => { onNextPeriod(); setConfirmNext(false) }}>Potvrdi</button>
-                <button className="btn ghost" onClick={() => setConfirmNext(false)}>Odustani</button>
-              </div>
-            ) : (
-              <button className="btn primary lg" onClick={() => setConfirmNext(true)} style={{ minWidth: 200 }}>
-                Sljedeća četvrtina →
-              </button>
-            )
           )}
-          {game.trackTime && (
-            <div className="row" style={{ gap: 6 }}>
-              <button className="btn sm ghost" onClick={() => setEditing((v) => !v)}>Uredi</button>
-              {confirmNext ? (
-                <>
-                  <button className="btn sm good" onClick={() => { onNextPeriod(); setConfirmNext(false) }}>Potvrdi</button>
-                  <button className="btn sm ghost" onClick={() => setConfirmNext(false)}>Ne</button>
-                </>
-              ) : (
-                <button className="btn sm" onClick={() => setConfirmNext(true)}>Sljedeća →</button>
+
+          {confirmNext ? (
+            <div className="row" style={{ gap: 5 }}>
+              <button
+                className={`btn good ${game.trackTime || compact ? 'sm' : ''}`}
+                onClick={() => { onNextPeriod(); setConfirmNext(false) }}
+              >
+                {compact ? '✓' : 'Potvrdi'}
+              </button>
+              <button
+                className={`btn ghost ${game.trackTime || compact ? 'sm' : ''}`}
+                onClick={() => setConfirmNext(false)}
+              >
+                {compact ? '✕' : 'Odustani'}
+              </button>
+            </div>
+          ) : (
+            <div className="row" style={{ gap: 5 }}>
+              {game.trackTime && (
+                <button className="btn sm ghost" onClick={() => setEditing((v) => !v)}>Uredi</button>
               )}
+              <button
+                className={`btn ${game.trackTime ? 'sm' : (compact ? 'primary' : 'primary lg')}`}
+                onClick={() => setConfirmNext(true)}
+                style={game.trackTime || compact ? undefined : { minWidth: 200 }}
+              >
+                {compact ? `${p + 1}. Č →` : (game.trackTime ? 'Sljedeća →' : 'Sljedeća četvrtina →')}
+              </button>
             </div>
           )}
         </div>
 
-        <div className="sb-team" style={{ textAlign: 'right' }}>
-          <div className="sb-name">{rightName}</div>
-          <div className="sb-score">{rightScore}</div>
-          <div className="row wrap" style={{ gap: 4, marginTop: 2, justifyContent: 'flex-end' }}>
-            {!game.weAreHome && <span className="chip">TO {stats.timeouts.us}</span>}
-            {foulChip(game.weAreHome ? oppFouls : usFouls, 'PF')}
+        <div className="sb-team right">
+          <div className="sb-crest">{initials(rightName)}</div>
+          <div className="sb-txt" style={{ textAlign: 'right' }}>
+            <div className="sb-name">{rightName}</div>
+            <div className="sb-score">{rightScore}</div>
+            <div className="row wrap" style={{ gap: 4, marginTop: 2, justifyContent: 'flex-end' }}>
+              {!game.weAreHome && <span className="chip">TO {stats.timeouts.us}</span>}
+              {foulChip(game.weAreHome ? oppFouls : usFouls, 'PF')}
+            </div>
           </div>
         </div>
       </div>

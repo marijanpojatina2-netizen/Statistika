@@ -33,6 +33,7 @@ export default function RosterPanel({ stats, game, selectedId, onSelect, subMode
               key={r.player.id}
               row={r}
               bench
+              dense={twoCols}
               trackTime={game.trackTime}
               showMinutes
               selected={selectedId === r.player.id}

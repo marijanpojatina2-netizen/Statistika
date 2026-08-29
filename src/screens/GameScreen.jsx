@@ -2,8 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useGame } from '../state/GameContext.jsx'
 import { EV } from '../model/events.js'
 import useWakeLock from '../hooks/useWakeLock.js'
+import useIsMobile from '../hooks/useIsMobile.js'
 import Scoreboard from '../components/Scoreboard.jsx'
 import RosterPanel from '../components/RosterPanel.jsx'
+import PlayerChip from '../components/PlayerChip.jsx'
 import ActionPad from '../components/ActionPad.jsx'
 import SubPanel from '../components/SubPanel.jsx'
 import PlayByPlay from '../components/PlayByPlay.jsx'
@@ -12,13 +14,15 @@ import BoxScore from '../components/BoxScore.jsx'
 const SELECTION_TIMEOUT = 8000  // nedovrsen unos se sam ponistava
 
 export default function GameScreen({ onExit }) {
-  const { game, clock, stats, push, undo, toggleClock, setClock, nextPeriod, setTrackTime } = useGame()
+  const { game, clock, stats, push, undo, toggleClock, setClock, nextPeriod } = useGame()
   const [tab, setTab] = useState('unos')
   const [selectedId, setSelectedId] = useState(null)
   const [subOpen, setSubOpen] = useState(false)
+  const [benchOpen, setBenchOpen] = useState(false)
   const [flash, setFlash] = useState(null)
   const [toast, setToast] = useState(null)
   const selTimer = useRef(null)
+  const isMobile = useIsMobile()
 
   useWakeLock(!!game && game.status === 'live')
 
@@ -58,6 +62,20 @@ export default function GameScreen({ onExit }) {
 
   const selectPlayer = (id) => setSelectedId((cur) => (cur === id ? null : id))
 
+  const onCourt = stats.players.filter((r) => r.onCourt)
+  const bench = stats.players.filter((r) => !r.onCourt)
+
+  const pad = (
+    <ActionPad
+      game={game}
+      selectedId={selectedId}
+      selectedName={selPlayer ? `#${selPlayer.number} ${selPlayer.name}` : ''}
+      act={act}
+      compact={isMobile}
+      onOpenSub={() => setSubOpen(true)}
+    />
+  )
+
   return (
     <div className="app no-scroll">
       <Scoreboard
@@ -67,62 +85,83 @@ export default function GameScreen({ onExit }) {
         onToggleClock={toggleClock}
         onSetClock={setClock}
         onNextPeriod={nextPeriod}
+        compact={isMobile}
       />
 
       <div className="tabs">
         <button className={`tab ${tab === 'unos' ? 'on' : ''}`} onClick={() => setTab('unos')}>Unos</button>
-        <button className={`tab ${tab === 'log' ? 'on' : ''}`} onClick={() => setTab('log')}>Log ({game.events.length})</button>
-        <button className={`tab ${tab === 'stat' ? 'on' : ''}`} onClick={() => setTab('stat')}>Statistika</button>
+        <button className={`tab ${tab === 'log' ? 'on' : ''}`} onClick={() => setTab('log')}>
+          Log{isMobile ? '' : ` (${game.events.length})`}
+        </button>
+        <button className={`tab ${tab === 'stat' ? 'on' : ''}`} onClick={() => setTab('stat')}>
+          {isMobile ? 'Stat' : 'Statistika'}
+        </button>
         <div className="grow" />
-        <button className="btn sm bad" onClick={doUndo} style={{ marginBottom: 6 }}>↶ UNDO</button>
-        <button className="btn sm ghost" onClick={onExit} style={{ marginBottom: 6 }}>Izbornik</button>
+        <button className="btn sm bad" onClick={doUndo} style={{ marginBottom: 5 }}>↶ UNDO</button>
+        <button className="btn sm ghost" onClick={onExit} style={{ marginBottom: 5 }}>☰</button>
       </div>
 
-      {tab === 'unos' && (
-        <div className="main">
-          <div className="side panel" style={{ padding: 8, overflow: 'auto' }}>
-            <RosterPanel
-              stats={stats}
-              game={game}
-              selectedId={selectedId}
-              onSelect={selectPlayer}
-            />
+      {tab === 'unos' && (isMobile ? (
+        // --- mobitel: sve stane na jedan ekran, klupa se otvara po potrebi ---
+        <div className="m-wrap">
+          <div className="m-strip">
+            {onCourt.map((r) => (
+              <PlayerChip
+                key={r.player.id}
+                row={r}
+                trackTime={game.trackTime}
+                selected={selectedId === r.player.id}
+                onClick={() => selectPlayer(r.player.id)}
+              />
+            ))}
           </div>
-          <div className="work">
-            {subOpen ? (
-              <SubPanel stats={stats} act={act} onClose={() => setSubOpen(false)} />
-            ) : (
-              <div className="panel" style={{ padding: 10 }}>
-                <ActionPad
-                  game={game}
-                  selectedId={selectedId}
-                  selectedName={selPlayer ? `#${selPlayer.number} ${selPlayer.name}` : ''}
-                  act={act}
-                  onOpenSub={() => setSubOpen(true)}
+
+          <button className="btn sm ghost wide" onClick={() => setBenchOpen((v) => !v)}>
+            Klupa ({bench.length}) {benchOpen ? '▲' : '▼'}
+          </button>
+          {benchOpen && (
+            <div className="m-bench">
+              {bench.map((r) => (
+                <PlayerChip
+                  key={r.player.id}
+                  row={r}
+                  bench
+                  trackTime={game.trackTime}
+                  selected={selectedId === r.player.id}
+                  onClick={() => selectPlayer(r.player.id)}
                 />
-              </div>
-            )}
-            <div className="panel" style={{ padding: 10 }}>
-              <div className="row" style={{ justifyContent: 'space-between' }}>
-                <span className="section-title">Vodi vrijeme</span>
-                <div className="switch" style={{ width: 220 }}>
-                  <button className={game.trackTime ? 'on' : ''} onClick={() => setTrackTime(true)}>DA</button>
-                  <button className={!game.trackTime ? 'on' : ''} onClick={() => setTrackTime(false)}>NE</button>
-                </div>
-              </div>
+              ))}
             </div>
+          )}
+
+          <div style={{ flex: '1 1 auto', minHeight: 0, overflow: 'auto' }}>
+            {subOpen
+              ? <SubPanel stats={stats} act={act} onClose={() => setSubOpen(false)} />
+              : pad}
           </div>
         </div>
-      )}
+      ) : (
+        // --- tablet landscape ---
+        <div className="main">
+          <div className="side panel" style={{ padding: 8 }}>
+            <RosterPanel stats={stats} game={game} selectedId={selectedId} onSelect={selectPlayer} />
+          </div>
+          <div className="work">
+            {subOpen
+              ? <SubPanel stats={stats} act={act} onClose={() => setSubOpen(false)} />
+              : <div className="panel" style={{ padding: 10 }}>{pad}</div>}
+          </div>
+        </div>
+      ))}
 
       {tab === 'log' && (
-        <div style={{ padding: 10, overflow: 'auto', flex: 1 }}>
+        <div className="scroll-page">
           <PlayByPlay game={game} />
         </div>
       )}
 
       {tab === 'stat' && (
-        <div style={{ padding: 10, overflow: 'auto', flex: 1 }}>
+        <div className="scroll-page">
           <BoxScore game={game} stats={stats} />
         </div>
       )}
