@@ -1,0 +1,7 @@
+{
+  "trailingSlash": true,
+  "rewrites": [
+    { "source": "/statistika", "destination": "/" },
+    { "source": "/statistika/:path*", "destination": "/:path*" }
+  ]
+}
