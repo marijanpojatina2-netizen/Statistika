@@ -3,6 +3,7 @@ import { GameProvider, useGame } from './state/GameContext.jsx'
 import SetupScreen from './screens/SetupScreen.jsx'
 import GameScreen from './screens/GameScreen.jsx'
 import ArchiveScreen from './screens/ArchiveScreen.jsx'
+import useFullscreen from './hooks/useFullscreen.js'
 import {
   boxScoreCsv, playByPlayCsv, shareText, downloadCsv, gameFileBase,
 } from './model/exportCsv.js'
@@ -21,6 +22,7 @@ function Shell() {
   const [share, setShare] = useState(null)
   const [copied, setCopied] = useState(false)
   const [confirmFinish, setConfirmFinish] = useState(false)
+  const fullscreen = useFullscreen()
 
   /** Sustavni dijalog za dijeljenje ako postoji, inače tekst za ručno kopiranje. */
   const doShare = async (text) => {
@@ -128,6 +130,19 @@ function Shell() {
           </div>
 
           {sharePanel}
+
+          {fullscreen.supported && (
+            <div className="panel" style={{ padding: 12 }}>
+              <div className="section-title">Prikaz</div>
+              <button className="btn wide" style={{ marginTop: 8 }} onClick={fullscreen.toggle}>
+                {fullscreen.active ? 'Izađi iz punog ekrana' : 'Preko cijelog ekrana'}
+              </button>
+              <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>
+                Sakriva adresnu traku i sistemsku navigaciju. Ako aplikaciju dodaš na
+                početni zaslon, pokreće se preko cijelog ekrana i bez ovoga.
+              </div>
+            </div>
+          )}
 
           <div className="panel" style={{ padding: 12 }}>
             <div className="section-title">Vodi vrijeme</div>

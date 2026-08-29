@@ -9,6 +9,7 @@ import RosterPanel from '../components/RosterPanel.jsx'
 import PlayerChip from '../components/PlayerChip.jsx'
 import ActionPad from '../components/ActionPad.jsx'
 import SubPanel from '../components/SubPanel.jsx'
+import LineupPanel from '../components/LineupPanel.jsx'
 import PlayByPlay from '../components/PlayByPlay.jsx'
 import BoxScore from '../components/BoxScore.jsx'
 import Court from '../components/Court.jsx'
@@ -33,7 +34,10 @@ const CHAIN_TIMEOUT = {
 }
 
 export default function GameScreen({ onExit }) {
-  const { game, clock, stats, push, pushInto, undo, updateEvent, deleteEvent, toggleClock, setClock, nextPeriod } = useGame()
+  const {
+    game, clock, stats, push, pushInto, undo, updateEvent, deleteEvent,
+    setLineup, addPlayer, toggleClock, setClock, nextPeriod,
+  } = useGame()
   const [tab, setTab] = useState('unos')
   const [statTab, setStatTab] = useState('box')
   const [mode, setMode] = useState('teren')      // mobitel: teren ili klasicni gumbi
@@ -42,6 +46,7 @@ export default function GameScreen({ onExit }) {
   const [pendingAction, setPendingAction] = useState(null)
   const [chain, setChain] = useState(null)
   const [subOpen, setSubOpen] = useState(false)
+  const [lineupOpen, setLineupOpen] = useState(false)
   const [subOutId, setSubOutId] = useState(null)
   const [editId, setEditId] = useState(null)
   const [benchOpen, setBenchOpen] = useState(false)
@@ -359,7 +364,20 @@ export default function GameScreen({ onExit }) {
       selectedName={selLabel}
       act={act}
       compact
-      onOpenSub={() => { setSubOutId(null); setSubOpen(true) }}
+      onOpenSub={() => { setLineupOpen(false); setSubOutId(null); setSubOpen(true) }}
+      onOpenLineup={() => { setSubOpen(false); setLineupOpen(true) }}
+    />
+  )
+
+  const openLineup = () => { setSubOpen(false); setLineupOpen(true) }
+
+  const lineupPanel = (
+    <LineupPanel
+      game={game}
+      stats={stats}
+      onSave={(ids) => { setLineup(ids); confirmFeedback(null, 'Postava spremljena') }}
+      onAddPlayer={addPlayer}
+      onClose={() => setLineupOpen(false)}
     />
   )
 
@@ -420,6 +438,11 @@ export default function GameScreen({ onExit }) {
 
       {tab === 'unos' && (isMobile ? (
         <div className="m-wrap" style={barPad}>
+          {onCourt.length === 0 && (
+            <button className="btn bad wide" onClick={openLineup}>
+              Nema igrača na parketu — postavi petorku
+            </button>
+          )}
           <div className="m-strip">
             {onCourt.map((r) => (
               <PlayerChip
@@ -450,31 +473,39 @@ export default function GameScreen({ onExit }) {
             </div>
           )}
 
-          {!subOpen && (
+          {!subOpen && !lineupOpen && (
             <div className="seg">
               <button className={mode === 'teren' ? 'on' : ''} onClick={() => setMode('teren')}>Teren</button>
               <button className={mode === 'gumbi' ? 'on' : ''} onClick={() => setMode('gumbi')}>Gumbi</button>
             </div>
           )}
 
-          <div className={!subOpen && mode === 'teren' ? 'm-pane-court' : 'm-pane-scroll'}>
-            {subOpen
-              ? <SubPanel stats={stats} act={act} initialOutId={subOutId} onClose={() => setSubOpen(false)} />
-              : (mode === 'teren' ? courtBlock : pad)}
+          <div className={!subOpen && !lineupOpen && mode === 'teren' ? 'm-pane-court' : 'm-pane-scroll'}>
+            {lineupOpen ? lineupPanel
+              : subOpen
+                ? <SubPanel stats={stats} act={act} initialOutId={subOutId} onClose={() => setSubOpen(false)} />
+                : (mode === 'teren' ? courtBlock : pad)}
           </div>
         </div>
       ) : (
         <div className="main main3" style={barPad}>
           <div className="side panel" style={{ padding: 8 }}>
-            <RosterPanel stats={stats} game={game} selectedId={selectedId} onSelect={selectPlayer} />
+            <RosterPanel
+              stats={stats}
+              game={game}
+              selectedId={selectedId}
+              onSelect={selectPlayer}
+              onOpenLineup={openLineup}
+            />
           </div>
           <div className="panel court-panel" style={{ padding: 8 }}>
             {courtBlock}
           </div>
           <div className="work">
-            {subOpen
-              ? <SubPanel stats={stats} act={act} initialOutId={subOutId} onClose={() => setSubOpen(false)} />
-              : <div className="panel" style={{ padding: 10 }}>{pad}</div>}
+            {lineupOpen ? lineupPanel
+              : subOpen
+                ? <SubPanel stats={stats} act={act} initialOutId={subOutId} onClose={() => setSubOpen(false)} />
+                : <div className="panel" style={{ padding: 10 }}>{pad}</div>}
           </div>
         </div>
       ))}

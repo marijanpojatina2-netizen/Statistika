@@ -88,11 +88,49 @@ export function GameProvider({ children }) {
   const undo = useCallback(() => {
     if (!game || game.events.length === 0) return 0
     const { events, removed } = undoLast(game.events)
-    // Ne dopusti brisanje pocetnog PERIOD_START/LINEUP para.
-    if (events.length === 0) return 0
-    setGame((g) => ({ ...g, events }))
+
+    // Pocetna postava je temelj utakmice — UNDO nikad ne smije ici ispod nje,
+    // inace parket ostane prazan i unos vise nema kome pripisati akciju.
+    const firstLineup = game.events.findIndex((e) => e.type === EV.LINEUP)
+    const floor = firstLineup >= 0 ? firstLineup + 1 : 1
+    if (events.length < floor) return 0
+
+    setGame((g) => {
+      const next = { ...g, events }
+      // Ako je ponisten prelazak u novu cetvrtinu, vrati i semafor.
+      if (removed.some((e) => e.type === EV.PERIOD_START)) {
+        const lastStart = [...events].reverse().find((e) => e.type === EV.PERIOD_START)
+        next.clock = {
+          period: lastStart?.period || 1,
+          secs: g.quarterLength * 60,
+          running: false,
+          startedAt: null,
+        }
+      }
+      return next
+    })
     return removed.length
   }, [game, setGame])
+
+  /** Rucno postavljanje petorke usred utakmice (ispravak ili nova postava). */
+  const setLineup = useCallback((playerIds) => {
+    setGame((g) => {
+      const ev = makeEvent({
+        type: EV.LINEUP,
+        period: g.clock.period,
+        clock: g.trackTime ? Math.round(liveClock(g).secs) : null,
+        payload: { playerIds: playerIds.slice(0, 5) },
+      })
+      return { ...g, events: [...g.events, ev] }
+    })
+  }, [setGame])
+
+  /** Igrac koji je zakasnio ili nije bio na popisu — dodaj ga usred utakmice. */
+  const addPlayer = useCallback((number, name) => {
+    const player = { id: newId(), number: String(number).trim(), name: name.trim() }
+    setGame((g) => ({ ...g, roster: [...g.roster, player] }))
+    return player
+  }, [setGame])
 
   const updateEvent = useCallback((id, patch) => {
     setGame((g) => ({ ...g, events: g.events.map((e) => (e.id === id ? { ...e, ...patch } : e)) }))
@@ -174,7 +212,7 @@ export function GameProvider({ children }) {
   const value = {
     game, setGame, clock, stats,
     archive, templates, finishGame, deleteArchived, saveTemplate, deleteTemplate,
-    push, pushInto, undo, updateEvent, deleteEvent,
+    push, pushInto, undo, updateEvent, deleteEvent, setLineup, addPlayer,
     toggleClock, setClock, nextPeriod, setTrackTime,
     endGame: () => setGame((g) => ({ ...g, status: 'finished' })),
     resetGame: () => setGame(null),

@@ -1,7 +1,7 @@
 import React from 'react'
 import PlayerButton from './PlayerButton.jsx'
 
-export default function RosterPanel({ stats, game, selectedId, onSelect, subMode, subOutId }) {
+export default function RosterPanel({ stats, game, selectedId, onSelect, subMode, subOutId, onOpenLineup }) {
   const onCourt = stats.players.filter((r) => r.onCourt)
   const bench = stats.players.filter((r) => !r.onCourt)
   const twoCols = bench.length > 6
@@ -20,7 +20,14 @@ export default function RosterPanel({ stats, game, selectedId, onSelect, subMode
             onClick={() => onSelect(r.player.id, true)}
           />
         ))}
-        {onCourt.length === 0 && <div className="muted" style={{ padding: 8 }}>Nema igrača na parketu.</div>}
+        {onCourt.length === 0 && (
+          <div className="hint err">
+            Nema igrača na parketu — bez toga se akcije nemaju kome pripisati.
+            <button className="btn sm wide" style={{ marginTop: 8 }} onClick={onOpenLineup}>
+              Postavi petorku
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="section-title" style={{ marginTop: 6 }}>

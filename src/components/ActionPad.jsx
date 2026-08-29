@@ -6,7 +6,7 @@ import { EV, TEAM } from '../model/events.js'
  * `act(specs)` prima jedan ili vise event-spec objekata koji cine jednu grupu.
  * `compact` skracuje natpise za mobilni raspored.
  */
-export default function ActionPad({ game, selectedId, selectedName, act, onOpenSub, compact }) {
+export default function ActionPad({ game, selectedId, selectedName, act, onOpenSub, onOpenLineup, compact }) {
   // Igrač se može odabrati prije ILI poslije akcije — ako nije odabran,
   // `needsPlayer` kaže da akcija čeka igrača umjesto da gumb bude zaključan.
   const P = (type, label, payload = {}) => ({ type, playerId: selectedId, needsPlayer: true, label, payload })
@@ -55,6 +55,7 @@ export default function ActionPad({ game, selectedId, selectedName, act, onOpenS
         <button className="btn" onClick={() => act({ type: EV.REBOUND, playerId: null, payload: { off: false } })}>{L('Mom. skok OBR', 'Mom. OBR')}</button>
         <button className="btn" onClick={() => act({ type: EV.TIMEOUT, playerId: null })}>{L('Minuta odmora', 'Time-out')}</button>
         <button className="btn" onClick={onOpenSub}>Zamjena</button>
+        <button className="btn" onClick={onOpenLineup}>Postava</button>
       </div>
       <div className="grid4">
         <button className="btn primary" onClick={() => oppShot(1, true)}>Prot. +1</button>
