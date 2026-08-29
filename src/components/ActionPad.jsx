@@ -7,41 +7,46 @@ import { EV, TEAM } from '../model/events.js'
  * `compact` skracuje natpise za mobilni raspored.
  */
 export default function ActionPad({ game, selectedId, selectedName, act, onOpenSub, compact }) {
-  const need = !selectedId
-  const P = (type, payload = {}) => ({ type, playerId: selectedId, payload })
+  // Igrač se može odabrati prije ILI poslije akcije — ako nije odabran,
+  // `needsPlayer` kaže da akcija čeka igrača umjesto da gumb bude zaključan.
+  const P = (type, label, payload = {}) => ({ type, playerId: selectedId, needsPlayer: true, label, payload })
   const L = (full, short) => (compact ? short : full)
 
-  const shot = (value, made) => act(P(EV.SHOT, { made, value, x: null, y: null }))
+  const shot = (value, made) => act(P(
+    EV.SHOT,
+    `${value === 1 ? 'SB' : `${value}P`} ${made ? 'pogodak' : 'promašaj'}`,
+    { made, value, x: null, y: null },
+  ))
   const oppShot = (value, made) => act({
     type: EV.SHOT, team: TEAM.OPP, playerId: null, payload: { made, value, x: null, y: null },
   })
 
   return (
     <div className="actions">
-      <div className={`hint ${need ? '' : 'ok'}`}>
-        {need ? 'Odaberi igrača pa akciju →' : `Odabran: ${selectedName}`}
+      <div className={`hint ${selectedId ? 'ok' : ''}`}>
+        {selectedId ? `Odabran: ${selectedName}` : 'Tapni akciju pa igrača (ili obrnuto)'}
       </div>
 
       <div className="section-title">Šut</div>
       <div className="grid4">
-        <button className="btn good lg" disabled={need} onClick={() => shot(2, true)}>2P ✓</button>
-        <button className="btn bad lg" disabled={need} onClick={() => shot(2, false)}>2P ✗</button>
-        <button className="btn good lg" disabled={need} onClick={() => shot(3, true)}>3P ✓</button>
-        <button className="btn bad lg" disabled={need} onClick={() => shot(3, false)}>3P ✗</button>
-        <button className="btn good" disabled={need} onClick={() => shot(1, true)}>SB ✓</button>
-        <button className="btn bad" disabled={need} onClick={() => shot(1, false)}>SB ✗</button>
+        <button className="btn good lg" onClick={() => shot(2, true)}>2P ✓</button>
+        <button className="btn bad lg" onClick={() => shot(2, false)}>2P ✗</button>
+        <button className="btn good lg" onClick={() => shot(3, true)}>3P ✓</button>
+        <button className="btn bad lg" onClick={() => shot(3, false)}>3P ✗</button>
+        <button className="btn good" onClick={() => shot(1, true)}>SB ✓</button>
+        <button className="btn bad" onClick={() => shot(1, false)}>SB ✗</button>
       </div>
 
       <div className="section-title">Skok i akcije</div>
       <div className="grid4">
-        <button className="btn" disabled={need} onClick={() => act(P(EV.REBOUND, { off: true }))}>{L('Skok NAP', 'Skok N')}</button>
-        <button className="btn" disabled={need} onClick={() => act(P(EV.REBOUND, { off: false }))}>{L('Skok OBR', 'Skok O')}</button>
-        <button className="btn" disabled={need} onClick={() => act(P(EV.ASSIST))}>AST</button>
-        <button className="btn" disabled={need} onClick={() => act(P(EV.BLOCK))}>BLK</button>
-        <button className="btn" disabled={need} onClick={() => act(P(EV.STEAL))}>STL</button>
-        <button className="btn" disabled={need} onClick={() => act(P(EV.TURNOVER))}>TO</button>
-        <button className="btn warn" disabled={need} onClick={() => act(P(EV.FOUL, { kind: 'personal' }))}>Prekršaj</button>
-        <button className="btn" disabled={need} onClick={() => act(P(EV.FOUL_DRAWN))}>{L('Izborena os.', 'Izb. os.')}</button>
+        <button className="btn" onClick={() => act(P(EV.REBOUND, 'Skok napadački', { off: true }))}>{L('Skok NAP', 'Skok N')}</button>
+        <button className="btn" onClick={() => act(P(EV.REBOUND, 'Skok obrambeni', { off: false }))}>{L('Skok OBR', 'Skok O')}</button>
+        <button className="btn" onClick={() => act(P(EV.ASSIST, 'Asistencija'))}>AST</button>
+        <button className="btn" onClick={() => act(P(EV.BLOCK, 'Blokada'))}>BLK</button>
+        <button className="btn" onClick={() => act(P(EV.STEAL, 'Ukradena lopta'))}>STL</button>
+        <button className="btn" onClick={() => act(P(EV.TURNOVER, 'Izgubljena lopta'))}>TO</button>
+        <button className="btn warn" onClick={() => act(P(EV.FOUL, 'Prekršaj', { kind: 'personal' }))}>Prekršaj</button>
+        <button className="btn" onClick={() => act(P(EV.FOUL_DRAWN, 'Izborena osobna'))}>{L('Izborena os.', 'Izb. os.')}</button>
       </div>
 
       <div className="section-title">Momčadski / protivnik</div>

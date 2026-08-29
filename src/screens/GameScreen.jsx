@@ -39,6 +39,7 @@ export default function GameScreen({ onExit }) {
   const [mode, setMode] = useState('teren')      // mobitel: teren ili klasicni gumbi
   const [selectedId, setSelectedId] = useState(null)
   const [pendingShot, setPendingShot] = useState(null)
+  const [pendingAction, setPendingAction] = useState(null)
   const [chain, setChain] = useState(null)
   const [subOpen, setSubOpen] = useState(false)
   const [subOutId, setSubOutId] = useState(null)
@@ -48,6 +49,7 @@ export default function GameScreen({ onExit }) {
   const [toast, setToast] = useState(null)
   const selTimer = useRef(null)
   const shotTimer = useRef(null)
+  const actionTimer = useRef(null)
   const chainTimer = useRef(null)
   const isMobile = useIsMobile()
 
@@ -74,6 +76,12 @@ export default function GameScreen({ onExit }) {
     if (pendingShot) shotTimer.current = setTimeout(() => setPendingShot(null), SELECTION_TIMEOUT)
     return () => clearTimeout(shotTimer.current)
   }, [pendingShot])
+
+  useEffect(() => {
+    clearTimeout(actionTimer.current)
+    if (pendingAction) actionTimer.current = setTimeout(() => setPendingAction(null), SELECTION_TIMEOUT)
+    return () => clearTimeout(actionTimer.current)
+  }, [pendingAction])
 
   useEffect(() => {
     clearTimeout(chainTimer.current)
@@ -109,6 +117,15 @@ export default function GameScreen({ onExit }) {
     const list = Array.isArray(specs) ? specs : [specs]
     const first = list[0]
 
+    // Akcija odabrana prije igrača — pričekaj da se tapne igrač.
+    if (first.needsPlayer && !first.playerId) {
+      setChain(null)
+      setPendingShot(null)
+      setPendingAction(list)
+      if (navigator.vibrate) { try { navigator.vibrate(12) } catch { /* ignore */ } }
+      return
+    }
+
     // Ukradena lopta našeg igrača = izgubljena lopta protivnika (momčadski).
     const full = [...list]
     if (first.type === EV.STEAL && (first.team || TEAM.US) === TEAM.US) {
@@ -120,6 +137,7 @@ export default function GameScreen({ onExit }) {
     confirmFeedback(kind, 'Zapisano')
     setSelectedId(null)
     setPendingShot(null)
+    setPendingAction(null)
     setChain(nextChain(first, group))
 
     // Peti prekršaj — igrač mora van, odmah otvori zamjenu.
@@ -137,27 +155,37 @@ export default function GameScreen({ onExit }) {
     confirmFeedback(null, n ? `Poništeno (${n})` : 'Nema što poništiti')
     setSelectedId(null)
     setPendingShot(null)
+    setPendingAction(null)
     setChain(null)
   }, [undo, confirmFeedback])
 
-  const selectPlayer = (id) => setSelectedId((cur) => (cur === id ? null : id))
+  /** Tap na igrača dovršava akciju ili šut koji čeka, inače samo bira igrača. */
+  const selectPlayer = (id) => {
+    if (pendingAction) {
+      act(pendingAction.map((sp) => (sp.needsPlayer ? { ...sp, playerId: id } : sp)))
+      return
+    }
+    if (pendingShot && !pendingShot.playerId) {
+      setPendingShot({ ...pendingShot, playerId: id })
+      return
+    }
+    setSelectedId((cur) => (cur === id ? null : id))
+  }
 
   // --- unos šuta preko dijagrama -------------------------------------------
   const pickPosition = useCallback((x, y) => {
-    if (!selectedId) {
-      confirmFeedback(null, 'Prvo odaberi igrača')
-      return
-    }
     setChain(null)
-    setPendingShot({ x, y })
+    setPendingAction(null)
+    // Igrač se bira poslije pozicije ako još nije odabran.
+    setPendingShot({ x, y, playerId: selectedId })
     if (navigator.vibrate) { try { navigator.vibrate(12) } catch { /* ignore */ } }
-  }, [selectedId, confirmFeedback])
+  }, [selectedId])
 
   const resolveShot = (made) => {
-    if (!pendingShot || !selectedId) return
+    if (!pendingShot?.playerId) return
     act({
       type: EV.SHOT,
-      playerId: selectedId,
+      playerId: pendingShot.playerId,
       payload: { made, value: shotValue(pendingShot.x, pendingShot.y), x: pendingShot.x, y: pendingShot.y },
     })
   }
@@ -309,6 +337,18 @@ export default function GameScreen({ onExit }) {
     }
   }, [chain, onCourt, byId, game.awayName, stats.teamFouls, clock.period]) // eslint-disable-line
 
+  const playerLabel = (id) => {
+    const p = byId[id]
+    return p ? `#${p.number} ${p.name}` : ''
+  }
+
+  /** Gumbi igrača na parketu za trake koje čekaju odabir igrača. */
+  const whoOptions = (onPick) => onCourt.map((r) => ({
+    key: r.player.id,
+    label: `#${r.player.number} ${r.player.name}`,
+    onClick: () => onPick(r.player.id),
+  }))
+
   const courtShots = useMemo(() => positionedShots(game), [game.events]) // eslint-disable-line
   const editEvent = editId ? game.events.find((e) => e.id === editId) : null
 
@@ -327,7 +367,7 @@ export default function GameScreen({ onExit }) {
     <div className="court-wrap">
       {!pendingShot && (
         <div className={`hint ${selectedId ? 'ok' : ''}`}>
-          {selectedId ? `${selLabel} — tapni poziciju` : 'Odaberi igrača pa poziciju šuta'}
+          {selectedId ? `${selLabel} — tapni poziciju` : 'Tapni poziciju šuta, pa igrača'}
         </div>
       )}
       <Court shots={courtShots} pending={pendingShot} onPick={pickPosition} />
@@ -342,7 +382,7 @@ export default function GameScreen({ onExit }) {
     </div>
   )
 
-  const barOpen = !!pendingShot || !!chainView
+  const barOpen = !!pendingShot || !!pendingAction || !!chainView
 
   // Traka na dnu je fiksna — izmjeri je i rezerviraj točno toliko prostora,
   // da ni teren ni gumbi ne završe ispod nje.
@@ -475,16 +515,34 @@ export default function GameScreen({ onExit }) {
         </div>
       )}
 
-      {/* potvrda šuta s dijagrama — ima prednost pred lančanim upitom */}
+      {/* trake na dnu: šut ima prednost, pa akcija koja čeka igrača, pa lančani upit */}
       {pendingShot ? (
-        <div className="prompt-bar">
-          <div className="shot-bar">
-            <span className="who">{selLabel} · {shotValue(pendingShot.x, pendingShot.y)}P</span>
-            <button className="btn good lg b-ok" onClick={() => resolveShot(true)}>✓ POGODAK</button>
-            <button className="btn bad lg b-no" onClick={() => resolveShot(false)}>✗ PROMAŠAJ</button>
-            <button className="btn ghost sm b-cancel" onClick={() => setPendingShot(null)}>Odustani</button>
+        pendingShot.playerId ? (
+          <div className="prompt-bar">
+            <div className="shot-bar">
+              <span className="who">
+                {playerLabel(pendingShot.playerId)} · {shotValue(pendingShot.x, pendingShot.y)}P
+              </span>
+              <button className="btn good lg b-ok" onClick={() => resolveShot(true)}>✓ POGODAK</button>
+              <button className="btn bad lg b-no" onClick={() => resolveShot(false)}>✗ PROMAŠAJ</button>
+              <button className="btn ghost sm b-cancel" onClick={() => setPendingShot(null)}>Odustani</button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <ChainBar
+            title={`Šut ${shotValue(pendingShot.x, pendingShot.y)}P — tko je šutirao?`}
+            note="ili tapni igrača u popisu"
+            options={whoOptions((id) => setPendingShot({ ...pendingShot, playerId: id }))}
+            onClose={() => setPendingShot(null)}
+          />
+        )
+      ) : pendingAction ? (
+        <ChainBar
+          title={`${pendingAction[0].label} — tko?`}
+          note="ili tapni igrača u popisu"
+          options={whoOptions((id) => act(pendingAction.map((sp) => (sp.needsPlayer ? { ...sp, playerId: id } : sp))))}
+          onClose={() => setPendingAction(null)}
+        />
       ) : chainView && (
         <ChainBar
           title={chainView.title}
