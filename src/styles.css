@@ -318,7 +318,20 @@ textarea { height: auto; padding: 10px 13px; font-family: var(--f-ui); }
   text-align: left; min-height: 56px; width: 100%;
   /* okomito skrolanje popisa mora raditi; povlačenje kreće tek nakon zadržavanja prsta */
   touch-action: pan-y;
+  /* dugi pritisak ne smije pokrenuti označavanje teksta — to šalje touchcancel i ubija gestu */
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
 }
+/* Ručka za povlačenje: touch-action none znači da preglednik NIKAD ne preuzme
+   gestu — povlačenje s ručke kreće odmah, bez zadržavanja i bez prekida. */
+.drag-handle {
+  flex: none; width: 40px; align-self: stretch;
+  margin: -9px -10px -9px 0;
+  display: grid; place-items: center;
+  color: var(--muted-3); font-size: 16px;
+  border-left: 1px solid var(--line);
+  touch-action: none; cursor: grab;
+}
+.pcard.bench .drag-handle { margin: -7px -10px; margin-left: 0; }
 .pcard .pn {
   width: 38px; height: 38px; border-radius: 8px; background: var(--blue-t16);
   display: grid; place-items: center; font: 700 18px var(--f-cond); color: var(--blue-num); flex: none;

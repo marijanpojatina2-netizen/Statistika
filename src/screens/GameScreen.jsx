@@ -51,6 +51,7 @@ export default function GameScreen({ onExit }) {
   const chainTimer = useRef(null)
   const toastTimer = useRef(null)
   const suppressTap = useRef(0)
+  const handleDragRef = useRef(false)
   const isMobile = useIsMobile()
   const fullscreen = useFullscreen()
 
@@ -242,10 +243,8 @@ export default function GameScreen({ onExit }) {
   }
 
   // --- drag & drop zamjena ---------------------------------------------------
-  // Prstom se prati preko touch evenata: čim prst krene, preglednik pošalje
-  // pointercancel (jer smije skrolati) i povlačenje bi umrlo na pola.
-  // Touch eventi se nastavljaju, a preventDefault na prvom pomaku zaustavi skrol
-  // jer ga zadržavanje prsta još nije pokrenulo.
+  // Tri puta: ručka (touch-action none — preglednik nikad ne preuzme gestu),
+  // zadržavanje prsta na kartici, i miš s pragom od 12 px.
   const beginDrag = (id, fromBench, x, y) => {
     setDragLock(true)
     if (navigator.vibrate) { try { navigator.vibrate(15) } catch { /* ignore */ } }
@@ -272,21 +271,83 @@ export default function GameScreen({ onExit }) {
     })
   }
 
-  /** Prst: povlačenje kreće nakon zadržavanja, kraći pomak ostaje skrolanje. */
+  const abortDrag = () => {
+    setDragLock(false)
+    suppressTap.current = Date.now()
+    setDrag(null)
+  }
+
+  // Dugi pritisak inace otvara kontekstni izbornik / oznacavanje teksta, a
+  // oboje salje touchcancel koji ubija gestu — blokiraj ih dok gesta traje.
+  const guardGesture = () => {
+    const prevent = (ev) => ev.preventDefault()
+    window.addEventListener('contextmenu', prevent)
+    window.addEventListener('selectstart', prevent)
+    return () => {
+      window.removeEventListener('contextmenu', prevent)
+      window.removeEventListener('selectstart', prevent)
+    }
+  }
+
+  /** Ručka: povlačenje kreće odmah — touch-action none jamči da gesta preživi. */
+  const startHandleDrag = (e, id, fromBench) => {
+    if (e.button != null && e.button !== 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    handleDragRef.current = true
+    const pointerId = e.pointerId
+    const el = e.currentTarget
+    try { el.setPointerCapture(pointerId) } catch { /* nije nužno */ }
+    const unguard = guardGesture()
+    const block = (ev) => { if (ev.cancelable) ev.preventDefault() }
+    window.addEventListener('touchmove', block, { passive: false })
+    beginDrag(id, fromBench, e.clientX, e.clientY)
+
+    const cleanup = () => {
+      handleDragRef.current = false
+      unguard()
+      window.removeEventListener('touchmove', block, { passive: false })
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', cancel)
+    }
+    const move = (ev) => {
+      if (ev.pointerId !== pointerId) return
+      setDrag({ id, fromBench, x: ev.clientX, y: ev.clientY, overId: targetUnder(ev.clientX, ev.clientY, fromBench) })
+    }
+    const up = (ev) => {
+      if (ev.pointerId !== pointerId) return
+      cleanup()
+      finishDrag(id, fromBench)
+    }
+    const cancel = (ev) => {
+      if (ev.pointerId !== pointerId) return
+      cleanup()
+      abortDrag()
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', cancel)
+  }
+
+  /** Prst na tijelu kartice: povlačenje kreće nakon zadržavanja, kraći pomak je skrolanje. */
   const startTouchDrag = (e, id, fromBench) => {
+    if (handleDragRef.current) return
     if (e.touches.length !== 1) return
     const t0 = e.touches[0]
     const idf = t0.identifier
     const sx = t0.clientX
     const sy = t0.clientY
     let active = false
+    const unguard = guardGesture()
 
     const pick = (ev) => [...ev.changedTouches, ...ev.touches].find((t) => t.identifier === idf)
     const cleanup = () => {
       clearTimeout(hold)
+      unguard()
       window.removeEventListener('touchmove', move)
       window.removeEventListener('touchend', end)
-      window.removeEventListener('touchcancel', end)
+      window.removeEventListener('touchcancel', cancel)
     }
     const move = (ev) => {
       const t = pick(ev)
@@ -302,11 +363,15 @@ export default function GameScreen({ onExit }) {
       cleanup()
       if (active) finishDrag(id, fromBench)
     }
+    const cancel = () => {
+      cleanup()
+      if (active) abortDrag()
+    }
     const hold = setTimeout(() => { active = true; beginDrag(id, fromBench, sx, sy) }, 260)
 
     window.addEventListener('touchmove', move, { passive: false })
     window.addEventListener('touchend', end)
-    window.addEventListener('touchcancel', end)
+    window.addEventListener('touchcancel', cancel)
   }
 
   /** Miš: povlačenje kreće nakon 12 px, bez zadržavanja. */
@@ -640,6 +705,7 @@ export default function GameScreen({ onExit }) {
                 onTap={() => tapPlayer(r.player.id)}
                 onPointerDown={(e) => startMouseDrag(e, r.player.id, false)}
                 onTouchStart={(e) => startTouchDrag(e, r.player.id, false)}
+                onHandleDown={(e) => startHandleDrag(e, r.player.id, false)}
               />
             ))}
             {onCourt.length === 0 && (
@@ -650,7 +716,7 @@ export default function GameScreen({ onExit }) {
             )}
             <div style={{ padding: '10px 4px 6px' }}>
               <div className="section-title">Klupa</div>
-              <div className="bench-note">Zamjena: drži prst na igraču pa ga povuci na petorku — ili gumb Zamjena</div>
+              <div className="bench-note">Zamjena: povuci igrača za ⠿ ručku na drugoga (ili drži prst pa povuci)</div>
             </div>
             {bench.map((r) => (
               <PlayerCard
@@ -659,6 +725,7 @@ export default function GameScreen({ onExit }) {
                 onTap={() => tapPlayer(r.player.id)}
                 onPointerDown={(e) => startMouseDrag(e, r.player.id, true)}
                 onTouchStart={(e) => startTouchDrag(e, r.player.id, true)}
+                onHandleDown={(e) => startHandleDrag(e, r.player.id, true)}
               />
             ))}
           </div>
