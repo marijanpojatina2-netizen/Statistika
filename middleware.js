@@ -58,6 +58,7 @@ export default async function middleware(request) {
       status: 401, headers: { 'Content-Type': 'application/json' },
     })
   }
-  const login = `${prefix}/login.html`
-  return Response.redirect(new URL(login, request.url), 302)
+  // Relativni Location: kad app radi iza proxyja (kkdinamo.hr/stats),
+  // preglednik ostaje na klupskoj domeni umjesto da ode na vercel.app.
+  return new Response(null, { status: 302, headers: { Location: `${prefix}/login.html` } })
 }

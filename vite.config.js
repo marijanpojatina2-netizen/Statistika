@@ -6,6 +6,6 @@ export default defineConfig({
   plugins: [react()],
   // Relativna baza: ista se objava služi i na / i na /statistika/.
   // GitHub Pages workflow i dalje šalje APP_BASE=/Statistika/.
-  base: process.env.APP_BASE || './',
+  base: process.env.APP_BASE || (process.env.VERCEL ? '/stats/' : './'),
   build: { outDir: 'dist' },
 })

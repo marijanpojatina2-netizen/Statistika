@@ -10,16 +10,20 @@ export class CloudError extends Error {
   constructor(reason) { super(reason); this.reason = reason }
 }
 
+// Na kkdinamo.hr/stats dokument je BEZ završne kose crte, pa bi relativni
+// "api/…" promašio proxy — putanja se zato gradi iz Viteove baze ('/stats/').
+const BASE = import.meta.env.BASE_URL
+
 async function call(path, opts = {}) {
   let res
   try {
-    res = await fetch(`api/${path}`, { cache: 'no-store', ...opts })
+    res = await fetch(`${BASE}api/${path}`, { cache: 'no-store', ...opts })
   } catch {
     throw new CloudError('offline')
   }
   if (res.status === 401) {
     // Kolačić istekao ili obrisan — natrag na prijavu.
-    window.location.href = 'login.html'
+    window.location.href = `${BASE}login.html`
     throw new CloudError('auth')
   }
   if (res.status === 503) throw new CloudError('no-blob')
@@ -50,6 +54,6 @@ export const getCoach = () => {
 }
 
 export async function logoutCloud() {
-  try { await fetch('api/logout', { method: 'POST' }) } catch { /* offline — kolačić ostaje, svejedno vodi na login */ }
-  window.location.href = 'login.html'
+  try { await fetch(`${BASE}api/logout`, { method: 'POST' }) } catch { /* offline — kolačić ostaje, svejedno vodi na login */ }
+  window.location.href = `${BASE}login.html`
 }

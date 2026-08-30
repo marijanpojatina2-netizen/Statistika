@@ -1,9 +1,9 @@
 {
   "redirects": [
-    { "source": "/stats", "destination": "/stats/", "permanent": false },
     { "source": "/statistika", "destination": "/statistika/", "permanent": false }
   ],
   "rewrites": [
+    { "source": "/stats", "destination": "/" },
     { "source": "/stats/", "destination": "/" },
     { "source": "/stats/:path+", "destination": "/:path+" },
     { "source": "/statistika/", "destination": "/" },
