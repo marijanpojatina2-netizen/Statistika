@@ -60,8 +60,10 @@ export default function SetupScreen({
     setWeAreHome(t.weAreHome !== false)
     const rows = (t.roster || []).map((p) => ({ id: newId(), number: String(p.number), name: p.name }))
     setRoster(rows.length ? rows : Array.from({ length: 6 }, blank))
-    touched.current = false
-    setStarters(rows.slice(0, 5).map((p) => p.id))
+    // Predložak NE popunjava petorku — trener je bira sam, jer redoslijed
+    // klikanja određuje raspored pozicija na parketu.
+    touched.current = true
+    setStarters([])
   }
 
   const saveAsTemplate = () => {
