@@ -17,6 +17,7 @@ function Shell() {
   const {
     game, setGame, resetGame, setTrackTime, stats,
     archive, templates, finishGame, deleteArchived, saveTemplate, deleteTemplate,
+    cloud, syncNow, coach, logout,
   } = useGame()
   const [view, setView] = useState('game')      // game | menu | archive
   const [share, setShare] = useState(null)
@@ -73,6 +74,8 @@ function Shell() {
           onShare={doShare}
           sharePanel={sharePanel}
           onClose={() => go(game ? 'menu' : 'game')}
+          cloud={cloud}
+          onSync={syncNow}
         />
       </div>
     )
@@ -90,6 +93,10 @@ function Shell() {
           onDeleteTemplate={deleteTemplate}
           onOpenArchive={() => go('archive')}
           archiveCount={archive.length}
+          cloud={cloud}
+          onSync={syncNow}
+          coach={coach}
+          onLogout={logout}
         />
         </div>
       </div>

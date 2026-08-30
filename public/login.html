@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="hr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0c1526" />
+  <meta name="color-scheme" content="dark" />
+  <title>Prijava — Košarkaška statistika</title>
+  <link rel="stylesheet" href="./fonts.css" />
+  <link rel="icon" href="./icon-192.png" />
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: 'Barlow', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      color: #e8edf6;
+      background:
+        radial-gradient(1100px 600px at 50% -10%, rgba(47, 111, 224, .16), transparent 60%),
+        radial-gradient(900px 500px at 50% 115%, rgba(217, 164, 65, .07), transparent 60%),
+        #0a111f;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px 16px calc(24px + env(safe-area-inset-bottom));
+    }
+    /* diskretne "parket" letvice preko podloge */
+    body::before {
+      content: ''; position: fixed; inset: 0; pointer-events: none;
+      background: repeating-linear-gradient(90deg,
+        rgba(146, 170, 212, .028) 0 84px, rgba(10, 17, 31, 0) 84px 88px);
+      mask-image: linear-gradient(180deg, transparent 0%, #000 30%, #000 70%, transparent 100%);
+      -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 30%, #000 70%, transparent 100%);
+    }
+    .card {
+      position: relative; width: 100%; max-width: 420px;
+      background: #101a2c;
+      border: 1px solid rgba(146, 170, 212, .16);
+      border-radius: 18px;
+      padding: 28px 26px 26px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, .45);
+    }
+    .card::before {
+      content: ''; position: absolute; top: 0; left: 18px; right: 18px; height: 3px;
+      border-radius: 0 0 3px 3px;
+      background: linear-gradient(90deg, transparent, #2f6fe0 25%, #5b93f5 50%, #2f6fe0 75%, transparent);
+    }
+    .crest {
+      width: 168px; aspect-ratio: 16/9; margin: 2px auto 14px;
+      border-radius: 10px; overflow: hidden;
+      border: 1px solid rgba(146, 170, 212, .18);
+      background: #0c1626; display: flex; align-items: center; justify-content: center;
+    }
+    .crest img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    h1 {
+      margin: 0; text-align: center;
+      font-family: 'Barlow Condensed', 'Barlow', sans-serif;
+      font-weight: 700; font-size: 30px; letter-spacing: .06em; text-transform: uppercase;
+      color: #e8edf6;
+    }
+    .sub {
+      margin: 4px 0 22px; text-align: center;
+      color: #8fa2c0; font-size: 14.5px; letter-spacing: .02em;
+    }
+    label {
+      display: block; margin: 0 0 6px 2px;
+      font-size: 12px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+      color: #8fa2c0;
+    }
+    input {
+      width: 100%; height: 52px; padding: 0 14px; margin-bottom: 16px;
+      font: inherit; font-size: 16px; color: #e8edf6;
+      background: #0c1626;
+      border: 1px solid rgba(146, 170, 212, .20);
+      border-radius: 12px; outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    input:focus { border-color: rgba(47, 111, 224, .65); box-shadow: 0 0 0 3px rgba(47, 111, 224, .18); }
+    input::placeholder { color: #5f7396; }
+    button {
+      width: 100%; height: 54px; margin-top: 4px;
+      font-family: 'Barlow Condensed', 'Barlow', sans-serif;
+      font-size: 19px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+      color: #fff; background: linear-gradient(180deg, #3a7bf0, #2f6fe0);
+      border: 1px solid rgba(91, 147, 245, .55); border-radius: 12px;
+      cursor: pointer; transition: filter .15s, transform .05s;
+    }
+    button:active { transform: translateY(1px); }
+    button:disabled { filter: saturate(.4) brightness(.75); cursor: default; }
+    .err {
+      display: none; margin: 0 0 14px; padding: 10px 12px;
+      font-size: 14px; color: #e88a8a;
+      background: rgba(224, 92, 92, .10);
+      border: 1px solid rgba(224, 92, 92, .40); border-radius: 10px;
+    }
+    .err.show { display: block; animation: shake .3s; }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); } 75% { transform: translateX(5px); }
+    }
+    .foot {
+      margin-top: 18px; text-align: center;
+      color: #5f7396; font-size: 12.5px; line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <form class="card" id="f" autocomplete="on">
+    <div class="crest" id="crestBox"><img src="./crest.jpg" alt="" onerror="crestBox.style.display='none'" /></div>
+    <h1>KK Dinamo</h1>
+    <div class="sub">Košarkaška statistika · prijava trenera</div>
+
+    <div class="err" id="err"></div>
+
+    <label for="name">Ime i prezime</label>
+    <input id="name" name="username" type="text" placeholder="npr. Marijan Pojatina" autocomplete="username" autocapitalize="words" required minlength="2" />
+
+    <label for="pass">Klupska lozinka</label>
+    <input id="pass" name="password" type="password" placeholder="••••••••" autocomplete="current-password" required />
+
+    <button id="btn" type="submit">Prijavi se</button>
+
+    <div class="foot">Ime se upisuje uz svaku spremljenu utakmicu.<br />Lozinka je zajednička za sve trenere kluba.</div>
+  </form>
+
+  <script>
+    const $ = (id) => document.getElementById(id)
+    try { $('name').value = localStorage.getItem('ks.coach') || '' } catch {}
+    if ($('name').value) $('pass').focus()
+
+    const showErr = (msg) => {
+      const el = $('err'); el.textContent = msg
+      el.classList.remove('show'); void el.offsetWidth; el.classList.add('show')
+    }
+
+    $('f').addEventListener('submit', async (e) => {
+      e.preventDefault()
+      const name = $('name').value.trim()
+      const password = $('pass').value
+      if (name.length < 2) { showErr('Upiši ime i prezime.'); return }
+      const btn = $('btn')
+      btn.disabled = true; btn.textContent = 'Prijava…'
+      try {
+        const res = await fetch('api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, password }),
+        })
+        if (res.ok) {
+          try { localStorage.setItem('ks.coach', name) } catch {}
+          location.replace('./')
+          return
+        }
+        showErr(res.status === 403 ? 'Pogrešna lozinka. Provjeri s klubom.' : 'Prijava nije uspjela. Pokušaj ponovno.')
+      } catch {
+        showErr('Nema veze s internetom. Spoji se pa pokušaj ponovno.')
+      }
+      btn.disabled = false; btn.textContent = 'Prijavi se'
+    })
+  </script>
+</body>
+</html>

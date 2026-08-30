@@ -2,11 +2,13 @@ import React, { useEffect, useRef, useState } from 'react'
 import { newId } from '../model/events.js'
 import { newGame } from '../model/game.js'
 import Crest from '../components/Crest.jsx'
+import CloudBadge from '../components/CloudBadge.jsx'
 
 const blank = () => ({ id: newId(), number: '', name: '' })
 
 export default function SetupScreen({
   onStart, templates = [], onSaveTemplate, onDeleteTemplate, onOpenArchive, archiveCount = 0,
+  cloud, onSync, coach = '', onLogout,
 }) {
   const [homeName, setHomeName] = useState('')
   const [awayName, setAwayName] = useState('')
@@ -101,12 +103,32 @@ export default function SetupScreen({
             <div className="page-sub">{(weAreHome ? homeName : awayName) || 'KK Dinamo'} · statistika</div>
           </div>
         </div>
-        {archiveCount > 0 && (
-          <button className="btn ghost" onClick={onOpenArchive} style={{ height: 42 }}>
-            Arhiva i sezona ({archiveCount})
-          </button>
-        )}
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          <CloudBadge cloud={cloud} onSync={onSync} />
+          {archiveCount > 0 && (
+            <button className="btn ghost" onClick={onOpenArchive} style={{ height: 42 }}>
+              Arhiva i sezona ({archiveCount})
+            </button>
+          )}
+        </div>
       </div>
+
+      {coach && (
+        <div className="row" style={{ justifyContent: 'space-between', margin: '-6px 2px 0' }}>
+          <div className="muted" style={{ fontSize: 13.5 }}>
+            Prijavljen: <b style={{ color: 'var(--text-3)' }}>{coach}</b>
+          </div>
+          {onLogout && (
+            <button
+              className="btn ghost"
+              style={{ minHeight: 34, padding: '0 12px', fontSize: 13 }}
+              onClick={() => { if (confirm('Odjaviti se? Za ponovni ulazak treba klupska lozinka.')) onLogout() }}
+            >
+              Odjava
+            </button>
+          )}
+        </div>
+      )}
 
       {templates.length > 0 && (
         <div className="panel" style={{ padding: '18px 20px' }}>
@@ -117,7 +139,7 @@ export default function SetupScreen({
                 <button className="btn accent grow" style={{ justifyContent: 'flex-start' }} onClick={() => applyTemplate(t)}>
                   {t.name}
                   <span className="muted" style={{ fontWeight: 500, fontSize: 12, fontFamily: 'var(--f-ui)' }}>
-                    · {(t.roster || []).length} igrača{t.competition ? ` · ${t.competition}` : ''}
+                    · {(t.roster || []).length} igrača{t.competition ? ` · ${t.competition}` : ''}{t.coach ? ` · ${t.coach}` : ''}
                   </span>
                 </button>
                 <button className="btn ghost" style={{ width: 44, padding: 0 }} onClick={() => onDeleteTemplate && onDeleteTemplate(t.id)} aria-label="Obriši predložak">✕</button>

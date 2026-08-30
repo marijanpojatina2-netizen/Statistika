@@ -5,7 +5,13 @@ import { liveClock } from '../model/game.js'
 import {
   loadCurrent, saveCurrent, clearCurrent,
   loadArchive, saveArchive, loadTemplates, saveTemplates,
+  loadOutbox, saveOutbox,
 } from '../model/storage.js'
+import {
+  cloudListGames, cloudSaveGame, cloudDeleteGame,
+  cloudListTemplates, cloudSaveTemplate, cloudDeleteTemplate,
+  getCoach, logoutCloud,
+} from '../model/cloud.js'
 
 const Ctx = createContext(null)
 export const useGame = () => useContext(Ctx)
@@ -15,6 +21,13 @@ export function GameProvider({ children }) {
   const [archive, setArchiveState] = useState(() => loadArchive())
   const [templates, setTemplatesState] = useState(() => loadTemplates())
   const [tick, setTick] = useState(0)
+  // Oblak: 'sync' (u tijeku), 'ok', 'offline', 'no-blob' (nije uključen), 'none' (nema backenda)
+  const [cloud, setCloud] = useState({ status: 'sync', at: null })
+
+  // syncNow je stabilan callback, pa najnovije stanje čita preko refova.
+  const archiveRef = useRef(archive); archiveRef.current = archive
+  const templatesRef = useRef(templates); templatesRef.current = templates
+  const syncingRef = useRef(false)
 
   // Automatsko spremanje nakon SVAKE promjene.
   const setGame = useCallback((updater) => {
@@ -185,38 +198,109 @@ export function GameProvider({ children }) {
     setGame((g) => ({ ...g, trackTime: value, clock: { ...g.clock, running: false, startedAt: null } }))
   }, [setGame])
 
+  // --- oblak: zajednička arhiva i predlošci --------------------------------
+
+  /** Zapamti promjenu koju treba poslati u oblak (radi i offline). */
+  const enqueue = useCallback((kind, id) => {
+    const next = [...loadOutbox().filter((o) => !(o.kind === kind && o.id === id)), { kind, id, ts: Date.now() }]
+    saveOutbox(next)
+  }, [])
+
+  /**
+   * Pošalji sve iz outboxa pa povuci zajedničko stanje iz oblaka.
+   * Oblak je izvor istine tek NAKON što je outbox uspješno ispražnjen —
+   * u suprotnom se lokalno stanje ne dira (ništa se ne može izgubiti).
+   */
+  const syncNow = useCallback(async () => {
+    if (syncingRef.current) return
+    syncingRef.current = true
+    setCloud((c) => ({ ...c, status: 'sync' }))
+    try {
+      let outbox = loadOutbox()
+      for (const op of [...outbox]) {
+        if (op.kind === 'game') {
+          const g = archiveRef.current.find((x) => x.id === op.id)
+          if (g) await cloudSaveGame(g)
+        } else if (op.kind === 'game-del') {
+          await cloudDeleteGame(op.id)
+        } else if (op.kind === 'tpl') {
+          const t = templatesRef.current.find((x) => x.id === op.id)
+          if (t) await cloudSaveTemplate(t)
+        } else if (op.kind === 'tpl-del') {
+          await cloudDeleteTemplate(op.id)
+        }
+        outbox = outbox.filter((o) => o !== op)
+        saveOutbox(outbox)
+      }
+
+      const [games, tpls] = await Promise.all([cloudListGames(), cloudListTemplates()])
+      games.sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0))
+      tpls.sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0))
+      saveArchive(games); setArchiveState(games); archiveRef.current = games
+      saveTemplates(tpls); setTemplatesState(tpls); templatesRef.current = tpls
+      setCloud({ status: 'ok', at: Date.now() })
+    } catch (e) {
+      const r = e?.reason
+      setCloud({ status: r === 'none' ? 'none' : r === 'no-blob' ? 'no-blob' : 'offline', at: null })
+    } finally {
+      syncingRef.current = false
+    }
+  }, [])
+
+  // Pri pokretanju i svaki put kad se vrati internet.
+  useEffect(() => {
+    syncNow()
+    const on = () => syncNow()
+    window.addEventListener('online', on)
+    return () => window.removeEventListener('online', on)
+  }, [syncNow])
+
   // --- arhiva i predlošci ---------------------------------------------------
 
   const finishGame = useCallback(() => {
     if (!game) return
-    const done = { ...game, status: 'finished', finishedAt: Date.now() }
+    const done = { ...game, status: 'finished', finishedAt: Date.now(), coach: getCoach() || game.coach || '' }
     const next = [done, ...archive.filter((g) => g.id !== done.id)]
     saveArchive(next)
     setArchiveState(next)
+    archiveRef.current = next // syncNow se zove odmah — ref mora vidjeti novu utakmicu
     setGame(null)
-  }, [game, archive, setGame])
+    enqueue('game', done.id)
+    syncNow()
+  }, [game, archive, setGame, enqueue, syncNow])
 
   const deleteArchived = useCallback((id) => {
     const next = archive.filter((g) => g.id !== id)
     saveArchive(next)
     setArchiveState(next)
-  }, [archive])
+    archiveRef.current = next
+    enqueue('game-del', id)
+    syncNow()
+  }, [archive, enqueue, syncNow])
 
   const saveTemplate = useCallback((tpl) => {
-    const next = [tpl, ...templates.filter((t) => t.id !== tpl.id)]
+    const full = { ...tpl, coach: getCoach() || tpl.coach || '' }
+    const next = [full, ...templates.filter((t) => t.id !== full.id)]
     saveTemplates(next)
     setTemplatesState(next)
-  }, [templates])
+    templatesRef.current = next
+    enqueue('tpl', full.id)
+    syncNow()
+  }, [templates, enqueue, syncNow])
 
   const deleteTemplate = useCallback((id) => {
     const next = templates.filter((t) => t.id !== id)
     saveTemplates(next)
     setTemplatesState(next)
-  }, [templates])
+    templatesRef.current = next
+    enqueue('tpl-del', id)
+    syncNow()
+  }, [templates, enqueue, syncNow])
 
   const value = {
     game, setGame, clock, stats,
     archive, templates, finishGame, deleteArchived, saveTemplate, deleteTemplate,
+    cloud, syncNow, coach: getCoach(), logout: logoutCloud,
     push, pushInto, undo, updateEvent, deleteEvent, removeFromGroup, setLineup, addPlayer,
     toggleClock, setClock, nextPeriod, setTrackTime,
     endGame: () => setGame((g) => ({ ...g, status: 'finished' })),

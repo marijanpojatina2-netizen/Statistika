@@ -3,13 +3,14 @@ import { seasonStats } from '../model/season.js'
 import { fmtPct } from '../model/derive.js'
 import { boxScoreCsv, playByPlayCsv, seasonCsv, shareText, downloadCsv, gameFileBase } from '../model/exportCsv.js'
 import StatsTab from '../components/StatsTab.jsx'
+import CloudBadge from '../components/CloudBadge.jsx'
 
 const hrDate = (iso) => {
   const d = new Date(`${iso}T00:00:00`)
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('hr-HR')
 }
 
-export default function ArchiveScreen({ archive, onDelete, onClose, onShare, sharePanel }) {
+export default function ArchiveScreen({ archive, onDelete, onClose, onShare, sharePanel, cloud, onSync }) {
   const [tab, setTab] = useState('utakmice')
   const [openId, setOpenId] = useState(null)
   const [confirmId, setConfirmId] = useState(null)
@@ -24,7 +25,10 @@ export default function ArchiveScreen({ archive, onDelete, onClose, onShare, sha
       <div className="setup" style={{ maxWidth: 1100 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <h1 style={{ margin: 0, color: 'var(--blue-hi)' }}>Arhiva i sezona</h1>
-          <button className="btn" onClick={onClose}>← Natrag</button>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <CloudBadge cloud={cloud} onSync={onSync} />
+            <button className="btn" onClick={onClose}>← Natrag</button>
+          </div>
         </div>
 
         {sharePanel}
@@ -51,7 +55,7 @@ export default function ArchiveScreen({ archive, onDelete, onClose, onShare, sha
                         {' '}{s.usName} {s.stats.score.us} : {s.stats.score.opp} {s.oppName}
                       </div>
                       <div className="muted" style={{ fontSize: 13 }}>
-                        {hrDate(g.date)}{g.competition ? ` · ${g.competition}` : ''} · {g.events.length} unosa
+                        {hrDate(g.date)}{g.competition ? ` · ${g.competition}` : ''} · {g.events.length} unosa{g.coach ? ` · zapisao: ${g.coach}` : ''}
                       </div>
                     </div>
                     <div className="row wrap" style={{ gap: 6 }}>

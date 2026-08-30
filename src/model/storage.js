@@ -24,3 +24,8 @@ export const saveArchive = (list) => write(KEY.ARCHIVE, list)
 
 export const loadTemplates = () => read(KEY.TEMPLATES, [])
 export const saveTemplates = (list) => write(KEY.TEMPLATES, list)
+
+// --- outbox: promjene koje čekaju slanje u oblak (offline u dvorani) -------
+const OUTBOX = 'ks.outbox'
+export const loadOutbox = () => read(OUTBOX, [])
+export const saveOutbox = (list) => write(OUTBOX, list)

@@ -1,5 +1,5 @@
 /* Service worker — potpuno offline radi u dvorani bez interneta. */
-const CACHE = 'ks-v2'
+const CACHE = 'ks-v3'
 
 self.addEventListener('install', (e) => {
   e.waitUntil((async () => {
@@ -23,14 +23,19 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return
   const url = new URL(req.url)
   if (url.origin !== self.location.origin) return
+  // API i login idu uvijek na mrežu — podaci iz oblaka se ne smiju keširati.
+  if (url.pathname.includes('/api/') || url.pathname.endsWith('/login.html')) return
 
   // Navigacija: prvo mreza, pa kes (da nova verzija dođe kad ima interneta).
   if (req.mode === 'navigate') {
     e.respondWith((async () => {
       try {
         const res = await fetch(req)
-        const c = await caches.open(CACHE)
-        c.put('./', res.clone())
+        // Preusmjerenje na prijavu se NE kešira — inače bi offline pokazivao login.
+        if (res.ok && !res.redirected) {
+          const c = await caches.open(CACHE)
+          c.put('./', res.clone())
+        }
         return res
       } catch {
         const c = await caches.open(CACHE)

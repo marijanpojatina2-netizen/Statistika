@@ -1,32 +1,62 @@
 /**
- * Vercel Edge Middleware — zaključava cijelu aplikaciju lozinkom (HTTP Basic).
+ * Vercel Edge Middleware — zaključava aplikaciju lozinkom.
+ *
+ * Umjesto sirovog browser-popupa (Basic Auth) prijava ide preko vlastitog
+ * login ekrana (/login.html): trener upiše ime i klupsku lozinku, server
+ * postavi kolačić ks_auth i sve dalje prolazi bez pitanja (180 dana).
  *
  * Postavke u Vercelu (Project → Settings → Environment Variables):
- *   STAT_PASS = lozinka koju treneri upisuju (OBAVEZNO — bez nje je stranica otvorena)
- *   STAT_USER = korisničko ime (neobavezno, zadano "dinamo")
+ *   STAT_PASS = zajednička lozinka za trenere (OBAVEZNO — bez nje je otvoreno)
  *
- * Radi i offline: nakon prve prijave service worker kešira aplikaciju, pa u
- * dvorani bez interneta ništa ne pita.
+ * Offline i dalje radi: service worker kešira aplikaciju nakon prve prijave,
+ * pa u dvorani bez interneta middleware uopće nije na putu.
  */
 export const config = { matcher: '/(.*)' }
 
-export default function middleware(request) {
+// Bez prijave smiju samo login ekran i ono što mu treba za prikaz.
+const OPEN = [
+  /^\/login\.html$/,
+  /^\/api\/login$/,
+  /^\/fonts\.css$/,
+  /^\/fonts\//,
+  /^\/crest\.(jpg|png)$/,
+  /^\/icon-192\.png$/,
+]
+
+async function authToken(pass) {
+  const data = new TextEncoder().encode(`ks-auth-v1|${pass}`)
+  const hash = await crypto.subtle.digest('SHA-256', data)
+  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+function cookie(request, name) {
+  const raw = request.headers.get('cookie') || ''
+  for (const part of raw.split(';')) {
+    const i = part.indexOf('=')
+    if (i > -1 && part.slice(0, i).trim() === name) return part.slice(i + 1).trim()
+  }
+  return null
+}
+
+export default async function middleware(request) {
   const pass = process.env.STAT_PASS
   if (!pass) return // lozinka još nije postavljena — pusti (i postavi je!)
 
-  const user = process.env.STAT_USER || 'dinamo'
-  const header = request.headers.get('authorization') || ''
-  if (header.startsWith('Basic ')) {
-    try {
-      const [u, p] = atob(header.slice(6)).split(':')
-      if (u === user && p === pass) return
-    } catch { /* neispravno zaglavlje — traži prijavu */ }
+  const url = new URL(request.url)
+  // Ista aplikacija živi i na /statistika/… (rewrite) — makni prefiks za provjeru.
+  const prefixed = url.pathname === '/statistika' || url.pathname.startsWith('/statistika/')
+  const path = (prefixed ? url.pathname.slice('/statistika'.length) : url.pathname) || '/'
+
+  if (OPEN.some((re) => re.test(path))) return
+
+  const tok = cookie(request, 'ks_auth')
+  if (tok && tok === await authToken(pass)) return
+
+  if (path.startsWith('/api/')) {
+    return new Response(JSON.stringify({ ok: false, error: 'auth' }), {
+      status: 401, headers: { 'Content-Type': 'application/json' },
+    })
   }
-  return new Response('Potrebna je prijava.', {
-    status: 401,
-    headers: {
-      'WWW-Authenticate': 'Basic realm="KK Dinamo statistika", charset="UTF-8"',
-      'Content-Type': 'text/plain; charset=utf-8',
-    },
-  })
+  const login = `${prefixed ? '/statistika' : ''}/login.html`
+  return Response.redirect(new URL(login, request.url), 302)
 }

@@ -1,8 +1,13 @@
 # Objava na kkdinamo.hr/statistika (Vercel)
 
 Stranica kkdinamo.hr je na Vercelu, pa se aplikacija objavljuje kao zaseban
-Vercel projekt iz ovog repozitorija. Lozinka se provjerava **na serveru**
-(`middleware.js`) — bez nje se ne može ni do jedne datoteke.
+Vercel projekt iz ovog repozitorija. Prijava ide preko vlastitog login ekrana
+(ime trenera + zajednička klupska lozinka), a provjera je **na serveru**
+(`middleware.js`) — bez prijave se ne može ni do jedne datoteke.
+
+Završene utakmice i predlošci rostera spremaju se **u oblak** (Vercel Blob),
+pa svi treneri vide zajedničku arhivu i mogu povući iste presete — svaki sa
+svog tableta.
 
 ## 1. Napravi Vercel projekt (5 minuta)
 
@@ -16,14 +21,26 @@ Radi osoba koja ima pristup Vercel računu kluba:
 4. Prije klika na Deploy otvori **Environment Variables** i dodaj:
    | Ime | Vrijednost |
    |---|---|
-   | `STAT_PASS` | lozinka koju će treneri upisivati |
-   | `STAT_USER` | korisničko ime (neobavezno; zadano je `dinamo`) |
+   | `STAT_PASS` | zajednička lozinka koju će treneri upisivati |
 5. **Deploy** → dobiješ adresu tipa `statistika-xxxx.vercel.app`,
-   već zaključanu lozinkom
+   već zaključanu prijavom
 
 > Bez postavljenog `STAT_PASS` stranica je otvorena — obavezno ga postavi.
 
-## 2. Spoji na kkdinamo.hr
+## 2. Uključi oblak za zajedničku arhivu (2 minute)
+
+U istom projektu:
+
+1. kartica **Storage** → **Create Database** → odaberi **Blob** → ime po
+   želji (npr. `statistika-podaci`) → **Create** i **Connect** na projekt
+2. **Deployments → ⋯ → Redeploy** (da funkcije dobiju pristup)
+
+To je sve — od tada se svaka završena utakmica i svaki spremljeni predložak
+automatski dijele među svim trenerima. Dok oblak nije uključen, aplikacija
+radi normalno, ali svaki tablet vidi samo svoje podatke (u aplikaciji tada
+piše „Oblak nije uključen").
+
+## 3. Spoji na kkdinamo.hr
 
 **Varijanta A — poddomena `statistika.kkdinamo.hr` (najjednostavnije):**
 u novom projektu **Settings → Domains → Add** upiši
@@ -45,21 +62,28 @@ u projektu **glavne stranice** (kkdinamo.hr) dodaj u njezin `vercel.json`:
 Aplikacija je građena s relativnim putanjama i poslužuje se i na `/` i na
 `/statistika/`, pa rade obje varijante bez ponovnog builda.
 
-## 3. Kako treneri koriste
+## 4. Kako treneri koriste
 
-- otvore adresu, preglednik pita korisničko ime i lozinku (jednom po uređaju,
-  preglednik ih zapamti)
+- otvore adresu → **login ekran**: upišu svoje ime i klupsku lozinku
+  (jednom po uređaju; prijava vrijedi 180 dana)
 - **Dodaj na početni zaslon** → radi preko cijelog ekrana i **offline u
   dvorani** (nakon prve prijave s internetom)
-- podaci (utakmice, arhiva, predlošci) ostaju **na tom uređaju** — ne dijele
-  se između tableta ni s drugim trenerima; nakon utakmice izvezi CSV
+- utakmica koja se upravo piše ostaje na tom tabletu (radi i bez interneta);
+  kad se utakmica **završi**, sprema se u zajedničku arhivu u oblaku — ako
+  interneta nema, pošalje se sama čim ga uređaj dobije
+- ime trenera se upisuje uz svaku spremljenu utakmicu i predložak
+  („zapisao: …"), pa se zna tko je što vodio
+- više trenera može istovremeno pisati različite utakmice — svaka se sprema
+  zasebno i ništa se ne sudara
 
-## 4. Napomene
+## 5. Napomene
 
 - Svaki push na granu `claude/basketball-stats-pwa-j3j0zs` automatski
-  objavljuje novu verziju i na Vercel (kad se projekt spoji) i na GitHub Pages
+  objavljuje novu verziju
 - Kopija na GitHub Pagesu (`marijanpojatina2-netizen.github.io/Statistika`)
-  **nema lozinku**. Kad klupska adresa proradi, isključi je:
+  **nema lozinku ni oblak**. Kad klupska adresa proradi, isključi je:
   GitHub → Settings → Pages → **Disable**
 - Promjena lozinke: Vercel → Project → Settings → Environment Variables →
-  uredi `STAT_PASS` → **Redeploy**
+  uredi `STAT_PASS` → **Redeploy**. Svi treneri se tada moraju ponovno
+  prijaviti
+- Brisanje utakmice iz arhive briše je **svima** (traži se potvrda)
