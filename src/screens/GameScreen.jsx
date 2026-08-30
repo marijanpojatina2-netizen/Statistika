@@ -583,27 +583,12 @@ export default function GameScreen({ onExit }) {
     ? `Slobodna bacanja · ${ft.side === 'opp' ? (oppName || 'PROTIVNIK').toUpperCase() : label(ft.shooterId)} — ${ft.idx + 1}/${ft.total}`
     : ''
 
-  // --- teren i uputa ---------------------------------------------------------
+  // --- teren -----------------------------------------------------------------
   const courtShots = useMemo(() => positionedShots(game), [game.events]) // eslint-disable-line
-  let hint = 'Tapni poziciju šuta, pa igrača'
-  let hintOk = false
-  if (pendingShot) { hint = pendingShot.playerId ? 'Potvrdi ishod' : 'Tko je šutirao? — tapni igrača'; hintOk = true }
-  else if (pendingAction) { hint = `${pendingAction.label} — tapni igrača`; hintOk = true }
-  else if (selectedId) { hint = `${label(selectedId)} — tapni poziciju šuta ili akciju`; hintOk = true }
-
   const courtBlock = (
-    <>
-      <div className={`hint ${hintOk ? 'ok' : ''}`} style={{ marginBottom: 10 }}>{hint}</div>
-      <div className="court-box">
-        <Court shots={courtShots} pending={pendingShot} onPick={pickPosition} />
-      </div>
-      <div className="court-legend">
-        <span><span className="dot" />pogodak</span>
-        <span><span className="x">✕</span>promašaj</span>
-        <span className="grow" />
-        {!isMobile && <span>2P / 3P se određuje iz pozicije</span>}
-      </div>
-    </>
+    <div className="court-box">
+      <Court shots={courtShots} pending={pendingShot} onPick={pickPosition} />
+    </div>
   )
 
   const pad = (
@@ -756,7 +741,7 @@ export default function GameScreen({ onExit }) {
           </div>
         </div>
       ) : (
-        <div className="live-grid" style={ft ? { paddingBottom: 96 } : undefined}>
+        <div className="live-grid">
           <div className={`live-col scroll ${dragLock ? 'locked' : ''}`} ref={scrollColRef}>
             <div className="section-title" style={{ padding: '2px 4px 6px' }}>Na parketu</div>
             {onCourt.map((r) => (
@@ -794,6 +779,15 @@ export default function GameScreen({ onExit }) {
           <div className="live-col court">{courtBlock}</div>
 
           <div className="live-col" style={{ overflowY: 'auto' }}>
+            {ft && (
+              <FreeThrowBar
+                inline
+                title={ftTitle}
+                onMade={() => recordFT(true)}
+                onMiss={() => recordFT(false)}
+                onStop={() => endChain(ft)}
+              />
+            )}
             {lineupOpen ? (
               <LineupPanel
                 game={game} stats={stats} onAddPlayer={addPlayer}
@@ -838,7 +832,7 @@ export default function GameScreen({ onExit }) {
         <PromptModal title={prompt.title} note={prompt.note} options={prompt.options} onClose={prompt.onClose} />
       )}
 
-      {ft && (
+      {ft && isMobile && (
         <FreeThrowBar
           title={ftTitle}
           onMade={() => recordFT(true)}
@@ -852,7 +846,7 @@ export default function GameScreen({ onExit }) {
       )}
 
       {flash && <div className={`flash ${flash.kind || ''}`} key={flash.at} />}
-      {toast && <div className="toast" style={{ bottom: ft ? 96 : 20 }}>{toast}</div>}
+      {toast && <div className="toast" style={{ bottom: ft && isMobile ? 96 : 20 }}>{toast}</div>}
     </div>
   )
 }

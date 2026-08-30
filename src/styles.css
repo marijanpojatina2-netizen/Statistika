@@ -423,6 +423,22 @@ textarea { height: auto; padding: 10px 13px; font-family: var(--f-ui); }
 .ftbar-note { font: 500 12px var(--f-ui); color: var(--muted); margin-top: 2px; }
 .ftbar .btn { height: 52px; min-height: 52px; padding: 0 22px; border-radius: 11px; font: 700 18px var(--f-cond); letter-spacing: .04em; }
 
+/* Na tabletu traka NIJE preko dna (to bi smanjivalo teren) nego panel na
+   vrhu stupca s akcijama. */
+.ftbar.inline {
+  position: static; z-index: auto;
+  flex-direction: column; align-items: stretch; gap: 10px;
+  background: var(--gold-t08);
+  border: 1px solid var(--gold-bd); border-top-width: 1px; border-radius: 12px;
+  box-shadow: none;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.ftbar.inline .ftbar-note { display: none; }
+.ftbar.inline .grow { display: none; }
+.ftbar.inline .row { width: 100%; }
+.ftbar.inline .btn { flex: 1; padding: 0 10px; }
+
 /* --- toast / drag ------------------------------------------------------------- */
 .toast {
   position: fixed; right: 20px; z-index: 60;

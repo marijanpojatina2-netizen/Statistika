@@ -141,7 +141,7 @@ export default function SetupScreen({
                 <button className="btn accent grow" style={{ justifyContent: 'flex-start' }} onClick={() => applyTemplate(t)}>
                   {t.name}
                   <span className="muted" style={{ fontWeight: 500, fontSize: 12, fontFamily: 'var(--f-ui)' }}>
-                    · {(t.roster || []).length} igrača{t.competition ? ` · ${t.competition}` : ''}{t.coach ? ` · ${t.coach}` : ''}
+                    · {(t.roster || []).length} igrača{t.competition ? ` · ${t.competition}` : ''}
                   </span>
                 </button>
                 <button className="btn ghost" style={{ width: 44, padding: 0 }} onClick={() => onDeleteTemplate && onDeleteTemplate(t.id)} aria-label="Obriši predložak">✕</button>

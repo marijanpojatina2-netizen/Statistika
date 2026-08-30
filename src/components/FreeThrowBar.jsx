@@ -4,9 +4,9 @@ import React from 'react'
  * Slobodna bacanja — traka na dnu koja NE blokira ostali unos.
  * Dok stoji, sve ostalo (zaostatak, time-out, zamjena) radi normalno.
  */
-export default function FreeThrowBar({ title, onMade, onMiss, onStop }) {
+export default function FreeThrowBar({ title, onMade, onMiss, onStop, inline }) {
   return (
-    <div className="ftbar">
+    <div className={`ftbar${inline ? ' inline' : ''}`}>
       <div style={{ minWidth: 0 }}>
         <div className="ftbar-title">{title}</div>
         <div className="ftbar-note">Ostali unosi (zaostatak, time-out, zamjena) rade normalno dok traju bacanja</div>
