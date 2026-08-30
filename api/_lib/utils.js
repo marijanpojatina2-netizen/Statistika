@@ -4,7 +4,7 @@
 // trenera može istovremeno spremati bez sudara).
 // ---------------------------------------------------------------------------
 import { createHash, timingSafeEqual } from 'node:crypto'
-import { list, put, del } from '@vercel/blob'
+import { list, put, del, get } from '@vercel/blob'
 
 /** Isti izračun kao u middleware.js — kolačić vrijedi dok se lozinka ne promijeni. */
 export const authToken = (pass) =>
@@ -40,6 +40,18 @@ export const passMatches = (candidate) => {
   return !pass || safeEq(candidate || '', pass)
 }
 
+// Store može biti Private ili Public (bira se pri stvaranju u Vercelu, ne
+// može se mijenjati) — SDK traži da se način navede u kodu, pa probamo oba.
+async function withAccess(fn) {
+  let err
+  for (const access of ['private', 'public']) {
+    try { return await fn(access) } catch (e) { err = e }
+  }
+  throw err
+}
+
+const streamToJson = async (stream) => JSON.parse(await new Response(stream).text())
+
 /**
  * GET  → cijela kolekcija (niz JSON zapisa)
  * POST → spremi zapis (tijelo mora imati .id); prepisuje postojeći s istim id-em
@@ -53,9 +65,9 @@ export function collectionHandler(prefix) {
         const { blobs } = await list({ prefix: `${prefix}/` })
         const items = await Promise.all(blobs.map(async (b) => {
           try {
-            // cache-buster: CDN inače do minute vraća staru verziju nakon prepisivanja
-            const r = await fetch(`${b.url}?v=${Date.now()}`)
-            return r.ok ? await r.json() : null
+            // useCache:false — CDN bi inače do minute vraćao staru verziju nakon prepisivanja
+            const r = await withAccess((access) => get(b.pathname, { access, useCache: false }))
+            return r?.stream ? await streamToJson(r.stream) : null
           } catch { return null }
         }))
         return res.status(200).json(items.filter(Boolean))
@@ -65,13 +77,13 @@ export function collectionHandler(prefix) {
         if (!item || typeof item !== 'object' || !item.id) {
           return res.status(400).json({ ok: false, error: 'bad-item' })
         }
-        await put(`${prefix}/${String(item.id).replace(/[^\w.-]/g, '_')}.json`, JSON.stringify(item), {
-          access: 'public',
+        await withAccess((access) => put(`${prefix}/${String(item.id).replace(/[^\w.-]/g, '_')}.json`, JSON.stringify(item), {
+          access,
           contentType: 'application/json',
           addRandomSuffix: false,
           allowOverwrite: true,
           cacheControlMaxAge: 60,
-        })
+        }))
         return res.status(200).json({ ok: true })
       }
       if (req.method === 'DELETE') {
