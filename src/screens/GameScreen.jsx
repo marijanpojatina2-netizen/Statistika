@@ -60,8 +60,12 @@ export default function GameScreen({ onExit }) {
   useWakeLock(!!game && game.status === 'live')
 
   const byId = useMemo(() => Object.fromEntries(game.roster.map((p) => [p.id, p])), [game.roster])
-  const onCourt = stats.players.filter((r) => r.onCourt)
-  const bench = stats.players.filter((r) => !r.onCourt)
+  // Petorka po pozicijama (redoslijed postave i zamjena), klupa po broju dresa.
+  const rowById = new Map(stats.players.map((r) => [r.player.id, r]))
+  const onCourt = stats.onCourt.map((id) => rowById.get(id)).filter(Boolean)
+  const bench = stats.players
+    .filter((r) => !r.onCourt)
+    .sort((a, b) => (Number(a.player.number) || 999) - (Number(b.player.number) || 999))
   const usName = game.weAreHome ? game.homeName : game.awayName
   const oppName = game.weAreHome ? game.awayName : game.homeName
   const label = (id) => { const p = byId[id]; return p ? `#${p.number} ${p.name}` : '' }
@@ -121,6 +125,24 @@ export default function GameScreen({ onExit }) {
     if (c && c.foulOut) openChain({ kind: 'subIn', outId: c.foulOut }, 0)
     else openChain(null)
   }, [openChain])
+
+  /**
+   * Kraj upita za asistenciju: upiše asistenciju (ako je odabrana) i, kad je
+   * uključen and-1 prekidač, još faul + izborenu osobnu + 1 bacanje.
+   * Sve ide u istu undo-grupu kao koš.
+   */
+  const finishAssist = useCallback((c, assistId) => {
+    if (assistId && assistId !== c.shooterId) {
+      record([{ type: EV.ASSIST, playerId: assistId }], { group: c.group, toast: c.and1 ? 'Asistencija + faul' : 'Asistencija' })
+    }
+    if (c.and1) {
+      record([{ type: EV.FOUL, team: TEAM.OPP, playerId: null, payload: { kind: 'personal' } },
+        { type: EV.FOUL_DRAWN, playerId: c.shooterId }], { group: c.group, toast: 'Koš + faul' })
+      startFT({ group: c.group, shooterId: c.shooterId, side: 'us', total: 1 })
+    } else {
+      openChain(null)
+    }
+  }, [record, startFT, openChain])
 
   const afterOurShot = useCallback((group, made, value, shooterId) => {
     if (value === 1) return
@@ -225,10 +247,7 @@ export default function GameScreen({ onExit }) {
     if (pendingShot && !pendingShot.playerId) { setPendingShot({ ...pendingShot, playerId: id }); return }
     if (chain) {
       const c = chain
-      if (c.kind === 'assist') {
-        if (id !== c.shooterId) record([{ type: EV.ASSIST, playerId: id }], { group: c.group, toast: 'Asistencija' })
-        openChain(null); return
-      }
+      if (c.kind === 'assist') { finishAssist(c, id); return }
       if (c.kind === 'rebound') {
         record([{ type: EV.REBOUND, playerId: id, payload: { off: c.byUs } }], { group: c.group, toast: `Skok ${c.byUs ? 'napadački' : 'obrambeni'}` })
         endChain(c); return
@@ -496,16 +515,16 @@ export default function GameScreen({ onExit }) {
     const c = chain
     if (c.kind === 'assist') {
       prompt = {
-        title: 'Asistencija?',
-        note: 'ili faul na šutu (and-1)',
+        title: c.and1 ? 'Koš + faul — asistencija?' : 'Asistencija?',
+        note: c.and1
+          ? 'faul je uključen — odaberi asistenta ili Bez, pa ide 1 bacanje'
+          : 'uz faul na šutu prvo tapni + FAUL (and-1)',
         options: [
-          ...courtOpts((id) => { record([{ type: EV.ASSIST, playerId: id }], { group: c.group, toast: 'Asistencija' }); openChain(null) }, c.shooterId),
-          opt('and1', '+ FAUL (and-1)', () => {
-            record([{ type: EV.FOUL, team: TEAM.OPP, playerId: null, payload: { kind: 'personal' } },
-              { type: EV.FOUL_DRAWN, playerId: c.shooterId }], { group: c.group, toast: 'Koš + faul' })
-            startFT({ group: c.group, shooterId: c.shooterId, side: 'us', total: 1 })
-          }, 'warn'),
-          opt('no', 'Bez asistencije', () => openChain(null), 'ghost'),
+          ...courtOpts((id) => finishAssist(c, id), c.shooterId),
+          // Prekidač: ne zatvara upit, nego ga prebaci u and-1 način (i natrag).
+          opt('and1', c.and1 ? '✓ + FAUL (and-1)' : '+ FAUL (and-1)',
+            () => openChain({ ...c, and1: !c.and1 }, 9000), 'warn'),
+          opt('no', 'Bez asistencije', () => finishAssist(c, null), 'ghost'),
         ],
         onClose: () => openChain(null),
       }

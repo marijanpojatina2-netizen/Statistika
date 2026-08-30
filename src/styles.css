@@ -259,6 +259,12 @@ textarea { height: auto; padding: 10px 13px; font-family: var(--f-ui); }
 .starter .n { font: 700 15px var(--f-cond); color: var(--muted-3); min-width: 26px; text-align: left; }
 .starter.on { background: rgba(47, 111, 224, .2); border-color: rgba(91, 147, 245, .6); color: #e8f0ff; }
 .starter.on .n { color: var(--blue-num); }
+.starter .ord {
+  flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 700 12px var(--f-cond); color: #fff;
+  background: var(--blue); border: 1px solid var(--blue-bd-hi);
+}
 
 /* --- semafor --------------------------------------------------------------- */
 .hdr {

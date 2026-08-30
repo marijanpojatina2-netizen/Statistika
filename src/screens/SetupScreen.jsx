@@ -231,16 +231,23 @@ export default function SetupScreen({
           </div>
         </div>
         <div className="starter-grid">
-          {valid.map((p) => (
-            <button
-              key={p.id}
-              className={`starter ${starters.includes(p.id) ? 'on' : ''}`}
-              onClick={() => toggleStarter(p.id)}
-            >
-              <span className="n">#{p.number}</span>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
-            </button>
-          ))}
+          {valid.map((p) => {
+            const ord = starters.indexOf(p.id)
+            return (
+              <button
+                key={p.id}
+                className={`starter ${ord >= 0 ? 'on' : ''}`}
+                onClick={() => toggleStarter(p.id)}
+              >
+                {ord >= 0 && <span className="ord">{ord + 1}</span>}
+                <span className="n">#{p.number}</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</span>
+              </button>
+            )
+          })}
+        </div>
+        <div className="muted" style={{ marginTop: 8, fontSize: 12.5 }}>
+          Redoslijed odabira = raspored petorke na parketu (1 = prvo mjesto).
         </div>
         {valid.length === 0 && <div className="muted" style={{ marginTop: 10, fontSize: 13 }}>Prvo upiši igrače u roster iznad.</div>}
       </div>

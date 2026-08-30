@@ -6,7 +6,8 @@ import React, { useState } from 'react'
  * zakasni na utakmicu.
  */
 export default function LineupPanel({ game, stats, onSave, onAddPlayer, onClose }) {
-  const current = stats.players.filter((r) => r.onCourt).map((r) => r.player.id)
+  // stats.onCourt čuva raspored pozicija — redoslijed klikanja postaje raspored
+  const current = stats.onCourt
   const [picked, setPicked] = useState(current)
   const [number, setNumber] = useState('')
   const [name, setName] = useState('')
@@ -37,7 +38,7 @@ export default function LineupPanel({ game, stats, onSave, onAddPlayer, onClose 
           const on = picked.includes(p.id)
           return (
             <button key={p.id} className={`btn ${on ? 'primary' : ''}`} onClick={() => toggle(p.id)}>
-              {on ? '✓ ' : ''}#{p.number} {p.name}
+              {on ? `${picked.indexOf(p.id) + 1}. ` : ''}#{p.number} {p.name}
             </button>
           )
         })}

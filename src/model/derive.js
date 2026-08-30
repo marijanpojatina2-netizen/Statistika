@@ -37,7 +37,9 @@ export function derive(game, now) {
     return obj[period]
   }
 
-  let onCourt = new Set()
+  // Petorka je UREĐEN popis (redoslijed pozicija iz postave): zamjena ubacuje
+  // novog igrača točno na mjesto onoga koji izlazi, ne na kraj.
+  let onCourt = []
   let period = 1
   let lastClock = periodSecs
   const tracking = !!game.trackTime
@@ -72,7 +74,7 @@ export function derive(game, now) {
 
     switch (ev.type) {
       case EV.LINEUP:
-        onCourt = new Set(ev.playerIds)
+        onCourt = [...(ev.playerIds || [])]
         markPeriod()
         break
       case EV.PERIOD_START:
@@ -85,8 +87,9 @@ export function derive(game, now) {
         flush(0)
         break
       case EV.SUB: {
-        onCourt.delete(ev.outId)
-        onCourt.add(ev.inId)
+        const slot = onCourt.indexOf(ev.outId)
+        if (slot >= 0) onCourt[slot] = ev.inId
+        else if (!onCourt.includes(ev.inId)) onCourt.push(ev.inId)
         markPeriod()
         break
       }
@@ -167,7 +170,7 @@ export function derive(game, now) {
     }
   }
 
-  const playerRows = game.roster.map((p) => ({ player: p, ...finish(lines[p.id]), onCourt: onCourt.has(p.id) }))
+  const playerRows = game.roster.map((p) => ({ player: p, ...finish(lines[p.id]), onCourt: onCourt.includes(p.id) }))
   const teamTotals = sumRows(playerRows, team)
   const oppTotals = finish(opp)
 
