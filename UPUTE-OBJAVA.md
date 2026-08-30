@@ -1,4 +1,4 @@
-# Objava na kkdinamo.hr/statistika (Vercel)
+# Objava na kkdinamo.hr/stats (Vercel)
 
 Stranica kkdinamo.hr je na Vercelu, pa se aplikacija objavljuje kao zaseban
 Vercel projekt iz ovog repozitorija. Prijava ide preko vlastitog login ekrana
@@ -42,19 +42,19 @@ piše „Oblak nije uključen").
 
 ## 3. Spoji na kkdinamo.hr
 
-**Varijanta A — poddomena `statistika.kkdinamo.hr` (najjednostavnije):**
+**Varijanta A — poddomena `stats.kkdinamo.hr` (najjednostavnije):**
 u novom projektu **Settings → Domains → Add** upiši
-`statistika.kkdinamo.hr`. Ako je glavna domena u istom Vercel računu,
+`stats.kkdinamo.hr`. Ako je glavna domena u istom Vercel računu,
 gotovo je odmah; inače Vercel ispiše DNS zapis koji treba dodati.
 
-**Varijanta B — točno `kkdinamo.hr/statistika`:**
+**Varijanta B — točno `kkdinamo.hr/stats`:**
 u projektu **glavne stranice** (kkdinamo.hr) dodaj u njezin `vercel.json`:
 
 ```json
 {
   "rewrites": [
-    { "source": "/statistika", "destination": "https://ADRESA-NOVOG-PROJEKTA.vercel.app/statistika/" },
-    { "source": "/statistika/:path*", "destination": "https://ADRESA-NOVOG-PROJEKTA.vercel.app/statistika/:path*" }
+    { "source": "/stats", "destination": "https://ADRESA-NOVOG-PROJEKTA.vercel.app/stats/" },
+    { "source": "/stats/:path*", "destination": "https://ADRESA-NOVOG-PROJEKTA.vercel.app/stats/:path*" }
   ]
 }
 ```

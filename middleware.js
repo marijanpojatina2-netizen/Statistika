@@ -43,9 +43,10 @@ export default async function middleware(request) {
   if (!pass) return // lozinka još nije postavljena — pusti (i postavi je!)
 
   const url = new URL(request.url)
-  // Ista aplikacija živi i na /statistika/… (rewrite) — makni prefiks za provjeru.
-  const prefixed = url.pathname === '/statistika' || url.pathname.startsWith('/statistika/')
-  const path = (prefixed ? url.pathname.slice('/statistika'.length) : url.pathname) || '/'
+  // Ista aplikacija živi i na /stats/… i /statistika/… (rewrite) — makni prefiks za provjeru.
+  const m = url.pathname.match(/^\/(stats|statistika)(?=\/|$)/)
+  const prefix = m ? m[0] : ''
+  const path = (prefix ? url.pathname.slice(prefix.length) : url.pathname) || '/'
 
   if (OPEN.some((re) => re.test(path))) return
 
@@ -57,6 +58,6 @@ export default async function middleware(request) {
       status: 401, headers: { 'Content-Type': 'application/json' },
     })
   }
-  const login = `${prefixed ? '/statistika' : ''}/login.html`
+  const login = `${prefix}/login.html`
   return Response.redirect(new URL(login, request.url), 302)
 }
