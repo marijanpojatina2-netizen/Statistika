@@ -79,10 +79,7 @@ Aplikacija je građena s relativnim putanjama i poslužuje se i na `/` i na
 ## 5. Napomene
 
 - Svaki push na granu `claude/basketball-stats-pwa-j3j0zs` automatski
-  objavljuje novu verziju
-- Kopija na GitHub Pagesu (`marijanpojatina2-netizen.github.io/Statistika`)
-  **nema lozinku ni oblak**. Kad klupska adresa proradi, isključi je:
-  GitHub → Settings → Pages → **Disable**
+  objavljuje novu verziju na Vercel (kkdinamo.hr/stats)
 - Promjena lozinke: Vercel → Project → Settings → Environment Variables →
   uredi `STAT_PASS` → **Redeploy**. Svi treneri se tada moraju ponovno
   prijaviti
