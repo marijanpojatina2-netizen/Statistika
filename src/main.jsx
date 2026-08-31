@@ -15,15 +15,41 @@ const isPhone = () => Math.min(window.screen.width, window.screen.height) < 620
 
 function applyViewport() {
   const meta = document.querySelector('meta[name="viewport"]')
-  if (!meta) return
+  const root = document.getElementById('root')
+  if (!meta || !root) return
   const landscape = window.matchMedia('(orientation: landscape)').matches
-  meta.setAttribute('content', isPhone() && landscape
+  const active = isPhone() && landscape
+  meta.setAttribute('content', active
     ? `width=${LANDSCAPE_LAYOUT_WIDTH}, user-scalable=no, viewport-fit=cover`
     : 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover')
+
+  // U full screenu Chrome IGNORIRA width iz meta taga (viewport postane širina
+  // ekrana) — tada isti raspored skaliramo sami CSS transformacijom. Klasa
+  // phone-fit uz to isključuje kompaktna responzivna pravila, da prikaz ostane
+  // identičan tabletu.
+  requestAnimationFrame(() => {
+    const needFallback = active && window.innerWidth < LANDSCAPE_LAYOUT_WIDTH - 40
+    document.documentElement.classList.toggle('phone-fit', needFallback)
+    if (needFallback) {
+      const scale = window.innerWidth / LANDSCAPE_LAYOUT_WIDTH
+      root.style.width = `${LANDSCAPE_LAYOUT_WIDTH}px`
+      root.style.height = `${Math.round(window.innerHeight / scale)}px`
+      root.style.transform = `scale(${scale})`
+      root.style.transformOrigin = '0 0'
+      document.documentElement.style.setProperty('--app-inv-scale', String(1 / scale))
+    } else {
+      root.style.width = ''
+      root.style.height = ''
+      root.style.transform = ''
+      document.documentElement.style.setProperty('--app-inv-scale', '1')
+    }
+  })
 }
 applyViewport()
 window.matchMedia('(orientation: landscape)').addEventListener('change', applyViewport)
 window.addEventListener('orientationchange', applyViewport)
+window.addEventListener('resize', applyViewport)
+document.addEventListener('fullscreenchange', applyViewport)
 
 createRoot(document.getElementById('root')).render(<App />)
 

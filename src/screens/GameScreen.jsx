@@ -842,7 +842,16 @@ export default function GameScreen({ onExit }) {
       )}
 
       {drag && (
-        <div className="drag-ghost" style={{ left: drag.x, top: drag.y }}>{label(drag.id)}</div>
+        /* --app-inv-scale ispravlja poziciju kad je root skaliran (full screen na mobitelu) */
+        <div
+          className="drag-ghost"
+          style={{
+            left: `calc(${drag.x}px * var(--app-inv-scale, 1))`,
+            top: `calc(${drag.y}px * var(--app-inv-scale, 1))`,
+          }}
+        >
+          {label(drag.id)}
+        </div>
       )}
 
       {flash && <div className={`flash ${flash.kind || ''}`} key={flash.at} />}
