@@ -522,8 +522,10 @@ export default function GameScreen({ onExit }) {
         options: [
           ...courtOpts((id) => finishAssist(c, id), c.shooterId),
           // Prekidač: ne zatvara upit, nego ga prebaci u and-1 način (i natrag).
+          // Uključen and-1 gasi auto-zatvaranje: trener je usred unosa i upit
+          // ne smije sam nestati (inače se faul i bacanje nikad ne upišu).
           opt('and1', c.and1 ? '✓ + FAUL (and-1)' : '+ FAUL (and-1)',
-            () => openChain({ ...c, and1: !c.and1 }, 9000), 'warn'),
+            () => openChain({ ...c, and1: !c.and1 }, c.and1 ? 9000 : 0), 'warn'),
           opt('no', 'Bez asistencije', () => finishAssist(c, null), 'ghost'),
         ],
         onClose: () => openChain(null),
