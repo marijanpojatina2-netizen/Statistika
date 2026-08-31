@@ -20,8 +20,12 @@ const pointsOf = (ev) => (ev.type === EV.SHOT && ev.made ? ev.value : 0)
  * Glavni reduktor. Vraca kompletno izvedeno stanje utakmice.
  * @param game {object}
  * @param now  {{period:number, clock:number|null}} trenutno stanje sata (za zivu minutazu)
+ * @param opts {{periods?: number[]}} — samo zadane četvrtine (box po četvrtinama);
+ *             postava/zamjene se uvijek prate kroz CIJELU utakmicu, broje se samo
+ *             eventi i minute unutar odabranog prozora
  */
-export function derive(game, now) {
+export function derive(game, now, opts = {}) {
+  const sel = opts.periods ? new Set(opts.periods) : null
   const periodSecs = (game.quarterLength || 10) * 60
   const lines = {}
   for (const p of game.roster) lines[p.id] = emptyLine()
@@ -51,14 +55,17 @@ export function derive(game, now) {
   // poeni iz reketa — mjerljivo samo za šuteve unesene preko dijagrama
   const paint = { pts: 0, positionedMade: 0, positionedAtt: 0 }
 
+  const inSel = () => !sel || sel.has(period)
+
   const flush = (clock) => {
     if (!tracking || clock == null) return
     const dt = Math.max(0, lastClock - clock)
-    if (dt > 0) for (const id of onCourt) if (lines[id]) lines[id].secs += dt
+    if (dt > 0 && inSel()) for (const id of onCourt) if (lines[id]) lines[id].secs += dt
     lastClock = Math.min(lastClock, clock)
   }
 
   const markPeriod = () => {
+    if (!inSel()) return
     for (const id of onCourt) if (lines[id]) lines[id].periods.add(period)
   }
 
@@ -94,7 +101,7 @@ export function derive(game, now) {
         break
       }
       case EV.TIMEOUT:
-        (ev.team === TEAM.OPP ? opp : team).timeouts += 1
+        if (inSel()) (ev.team === TEAM.OPP ? opp : team).timeouts += 1
         break
       default: break
     }
@@ -102,6 +109,7 @@ export function derive(game, now) {
     // --- statistika ---------------------------------------------------------
     // `lines[playerId]` za imenovane akcije; `team`/`opp` samo za momcadske
     // evente bez igraca. Zbrajanje u totale radi sumRows().
+    if (!inSel()) continue
     const isUs = ev.team !== TEAM.OPP
     const bag = ev.playerId && lines[ev.playerId] ? lines[ev.playerId] : (isUs ? team : opp)
 
@@ -147,7 +155,7 @@ export function derive(game, now) {
   }
 
   // ziva minutaza do trenutnog sata
-  if (tracking && now && now.period === period && now.clock != null) flush(now.clock)
+  if (tracking && now && now.period === period && now.clock != null && inSel()) flush(now.clock)
   markPeriod()
 
   const finish = (l) => {
