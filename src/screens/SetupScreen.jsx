@@ -97,7 +97,9 @@ export default function SetupScreen({
 
   return (
     <div className="setup">
-      <div className="row" style={{ justifyContent: 'space-between', paddingBottom: 6, gap: 16 }}>
+      {/* flexWrap: na uskom portretu značka oblaka i Arhiva idu u NOVI red,
+          umjesto da se preliju preko naslova */}
+      <div className="row" style={{ justifyContent: 'space-between', paddingBottom: 6, gap: '8px 16px', flexWrap: 'wrap' }}>
         <div className="row" style={{ gap: 14, minWidth: 0 }}>
           <Crest name={weAreHome ? homeName : awayName} />
           <div style={{ minWidth: 0 }}>
@@ -105,7 +107,7 @@ export default function SetupScreen({
             <div className="page-sub">{(weAreHome ? homeName : awayName) || 'KK Dinamo'} · statistika</div>
           </div>
         </div>
-        <div className="row" style={{ gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', flex: '1 0 auto' }}>
           <CloudBadge cloud={cloud} onSync={onSync} />
           {archiveCount > 0 && (
             <button className="btn ghost" onClick={onOpenArchive} style={{ height: 42 }}>
