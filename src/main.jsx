@@ -8,7 +8,9 @@ import './styles.css'
 // viewport se postavi na fiksnih 1120px pa preglednik sve proporcionalno
 // smanji da stane u širinu ekrana. U portraitu ostaje pravi mobilni raspored.
 // ---------------------------------------------------------------------------
-const LANDSCAPE_LAYOUT_WIDTH = 1120
+// Ista virtualna širina kao tablet — na 1120 bi se primijenio kompaktni
+// raspored (uže kolone, kraćena imena) pa prikaz ne bi bio identičan.
+const LANDSCAPE_LAYOUT_WIDTH = 1366
 const isPhone = () => Math.min(window.screen.width, window.screen.height) < 620
 
 function applyViewport() {
