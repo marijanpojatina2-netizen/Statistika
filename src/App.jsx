@@ -7,6 +7,7 @@ import useFullscreen from './hooks/useFullscreen.js'
 import {
   boxScoreCsv, playByPlayCsv, shareText, downloadCsv, gameFileBase,
 } from './model/exportCsv.js'
+import { shareReportImage } from './model/reportImage.js'
 
 const hrDate = (iso) => {
   const d = new Date(`${iso}T00:00:00`)
@@ -126,7 +127,8 @@ function Shell() {
           <div className="panel" style={{ padding: 12 }}>
             <div className="section-title">Podijeli i izvezi</div>
             <div className="grid2" style={{ marginTop: 8 }}>
-              <button className="btn primary" onClick={() => doShare(shareText(game, stats))}>Podijeli sažetak</button>
+              <button className="btn primary" onClick={() => shareReportImage(game, stats).catch(() => {})}>Izvještaj (slika)</button>
+              <button className="btn" onClick={() => doShare(shareText(game, stats))}>Podijeli sažetak</button>
               <button className="btn" onClick={() => downloadCsv(boxScoreCsv(game, stats), `${base}-box.csv`)}>CSV box score</button>
               <button className="btn" onClick={() => downloadCsv(playByPlayCsv(game), `${base}-play-by-play.csv`)}>CSV play-by-play</button>
               <button className="btn" onClick={() => go('archive')}>Arhiva i sezona ({archive.length})</button>

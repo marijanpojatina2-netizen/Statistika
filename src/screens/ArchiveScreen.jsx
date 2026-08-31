@@ -3,6 +3,7 @@ import { seasonStats } from '../model/season.js'
 import { fmtPct } from '../model/derive.js'
 import { boxScoreCsv, playByPlayCsv, seasonCsv, shareText, downloadCsv, gameFileBase } from '../model/exportCsv.js'
 import StatsTab from '../components/StatsTab.jsx'
+import { shareReportImage } from '../model/reportImage.js'
 import CloudBadge from '../components/CloudBadge.jsx'
 
 const hrDate = (iso) => {
@@ -62,6 +63,7 @@ export default function ArchiveScreen({ archive, onDelete, onClose, onShare, sha
                       <button className="btn sm" onClick={() => setOpenId(isOpen ? null : g.id)}>
                         {isOpen ? 'Sakrij' : 'Otvori'}
                       </button>
+                      <button className="btn sm primary" onClick={() => shareReportImage(g, s.stats).catch(() => {})}>Izvještaj</button>
                       <button className="btn sm" onClick={() => onShare(shareText(g, s.stats))}>Podijeli</button>
                       <button className="btn sm ghost" onClick={() => downloadCsv(boxScoreCsv(g, s.stats), `${gameFileBase(g)}-box.csv`)}>CSV box</button>
                       <button className="btn sm ghost" onClick={() => downloadCsv(playByPlayCsv(g), `${gameFileBase(g)}-play-by-play.csv`)}>CSV log</button>
