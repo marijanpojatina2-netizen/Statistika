@@ -8,6 +8,7 @@ import {
   boxScoreCsv, playByPlayCsv, shareText, downloadCsv, gameFileBase,
 } from './model/exportCsv.js'
 import { shareReportImage } from './model/reportImage.js'
+import GameInfoEditor from './components/GameInfoEditor.jsx'
 
 const hrDate = (iso) => {
   const d = new Date(`${iso}T00:00:00`)
@@ -17,9 +18,10 @@ const hrDate = (iso) => {
 function Shell() {
   const {
     game, setGame, resetGame, setTrackTime, stats,
-    archive, templates, finishGame, deleteArchived, saveTemplate, deleteTemplate,
+    archive, templates, finishGame, deleteArchived, updateArchivedGame, saveTemplate, deleteTemplate,
     cloud, syncNow, coach, logout,
   } = useGame()
+  const [editInfo, setEditInfo] = useState(false)
   const [view, setView] = useState('game')      // game | menu | archive
   const [share, setShare] = useState(null)
   const [copied, setCopied] = useState(false)
@@ -72,6 +74,7 @@ function Shell() {
         <ArchiveScreen
           archive={archive}
           onDelete={deleteArchived}
+          onEdit={updateArchivedGame}
           onShare={doShare}
           sharePanel={sharePanel}
           onClose={() => go(game ? 'menu' : 'game')}
@@ -122,6 +125,17 @@ function Shell() {
             <div className="muted" style={{ fontSize: 14 }}>
               {hrDate(game.date)}{game.competition && ` · ${game.competition}`} · {game.roster.length} igrača · {game.events.length} unosa
             </div>
+            {editInfo ? (
+              <GameInfoEditor
+                game={game}
+                onSave={(patch) => setGame((g) => ({ ...g, ...patch }))}
+                onClose={() => setEditInfo(false)}
+              />
+            ) : (
+              <button className="btn sm ghost" style={{ marginTop: 8 }} onClick={() => setEditInfo(true)}>
+                Uredi podatke (protivnik, datum...)
+              </button>
+            )}
           </div>
 
           <div className="panel" style={{ padding: 12 }}>

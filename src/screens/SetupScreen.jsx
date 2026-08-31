@@ -24,7 +24,8 @@ export default function SetupScreen({
 
   const valid = roster.filter((p) => p.name.trim() && String(p.number).trim())
   const needStarters = Math.min(5, valid.length)
-  const canStart = valid.length > 0 && starters.length === needStarters
+  const oppField = weAreHome ? awayName : homeName
+  const canStart = valid.length > 0 && starters.length === needStarters && !!oppField.trim()
   const touched = useRef(false)
 
   // Prijedlog startne petorke: prvih 5 upisanih. Korisnik ga slobodno mijenja.
@@ -82,9 +83,11 @@ export default function SetupScreen({
 
   const blockReason = valid.length === 0
     ? 'Upiši barem jednog igrača — broj dresa i ime.'
-    : starters.length < needStarters
-      ? `Odaberi još ${needStarters - starters.length} za startnu petorku (tapni ime dolje).`
-      : null
+    : !oppField.trim()
+      ? `Upiši ime protivnika (polje ${weAreHome ? 'Gost' : 'Domaćin'}) — bez njega arhiva ne zna s kim se igralo.`
+      : starters.length < needStarters
+        ? `Odaberi još ${needStarters - starters.length} za startnu petorku (tapni ime dolje).`
+        : null
 
   const start = () => {
     if (!canStart) return

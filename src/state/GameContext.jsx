@@ -269,6 +269,16 @@ export function GameProvider({ children }) {
     syncNow()
   }, [game, archive, setGame, enqueue, syncNow])
 
+  /** Naknadni ispravak podataka utakmice (ime protivnika, datum...) — ide i u oblak. */
+  const updateArchivedGame = useCallback((id, patch) => {
+    const next = archive.map((x) => (x.id === id ? { ...x, ...patch } : x))
+    saveArchive(next)
+    setArchiveState(next)
+    archiveRef.current = next
+    enqueue('game', id)
+    syncNow()
+  }, [archive, enqueue, syncNow])
+
   const deleteArchived = useCallback((id) => {
     const next = archive.filter((g) => g.id !== id)
     saveArchive(next)
@@ -299,7 +309,7 @@ export function GameProvider({ children }) {
 
   const value = {
     game, setGame, clock, stats,
-    archive, templates, finishGame, deleteArchived, saveTemplate, deleteTemplate,
+    archive, templates, finishGame, deleteArchived, updateArchivedGame, saveTemplate, deleteTemplate,
     cloud, syncNow, coach: getCoach(), logout: logoutCloud,
     push, pushInto, undo, updateEvent, deleteEvent, removeFromGroup, setLineup, addPlayer,
     toggleClock, setClock, nextPeriod, setTrackTime,

@@ -4,6 +4,7 @@ import { fmtPct } from '../model/derive.js'
 import { boxScoreCsv, playByPlayCsv, seasonCsv, shareText, downloadCsv, gameFileBase } from '../model/exportCsv.js'
 import StatsTab from '../components/StatsTab.jsx'
 import { shareReportImage } from '../model/reportImage.js'
+import GameInfoEditor from '../components/GameInfoEditor.jsx'
 import CloudBadge from '../components/CloudBadge.jsx'
 
 const hrDate = (iso) => {
@@ -11,10 +12,11 @@ const hrDate = (iso) => {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('hr-HR')
 }
 
-export default function ArchiveScreen({ archive, onDelete, onClose, onShare, sharePanel, cloud, onSync }) {
+export default function ArchiveScreen({ archive, onDelete, onEdit, onClose, onShare, sharePanel, cloud, onSync }) {
   const [tab, setTab] = useState('utakmice')
   const [openId, setOpenId] = useState(null)
   const [confirmId, setConfirmId] = useState(null)
+  const [editId, setEditId] = useState(null)
 
   const season = useMemo(() => seasonStats(archive), [archive])
   const byNewest = useMemo(() => [...season.summaries].reverse(), [season])
@@ -67,6 +69,7 @@ export default function ArchiveScreen({ archive, onDelete, onClose, onShare, sha
                       <button className="btn sm" onClick={() => onShare(shareText(g, s.stats))}>Podijeli</button>
                       <button className="btn sm ghost" onClick={() => downloadCsv(boxScoreCsv(g, s.stats), `${gameFileBase(g)}-box.csv`)}>CSV box</button>
                       <button className="btn sm ghost" onClick={() => downloadCsv(playByPlayCsv(g), `${gameFileBase(g)}-play-by-play.csv`)}>CSV log</button>
+                      <button className="btn sm ghost" onClick={() => setEditId(editId === g.id ? null : g.id)}>Uredi</button>
                       {confirmId === g.id ? (
                         <>
                           <button className="btn sm bad" onClick={() => { onDelete(g.id); setConfirmId(null); setOpenId(null) }}>Da, obriši</button>
@@ -77,6 +80,14 @@ export default function ArchiveScreen({ archive, onDelete, onClose, onShare, sha
                       )}
                     </div>
                   </div>
+
+                  {editId === g.id && (
+                    <GameInfoEditor
+                      game={g}
+                      onSave={(patch) => onEdit && onEdit(g.id, patch)}
+                      onClose={() => setEditId(null)}
+                    />
+                  )}
 
                   {isOpen && (
                     <div style={{ marginTop: 10 }}>
