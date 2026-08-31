@@ -58,6 +58,7 @@ export default function ActionPad({ game, act, oppName, onOpenSub, onOpenLineup,
           <button className="btn opp" onClick={() => opp([{ type: EV.SHOT, team: TEAM.OPP, playerId: null, payload: { made: true, value: 1, x: null, y: null } }], 'Protivnik +1')}>+1</button>
           <button className="btn opp" onClick={() => act({ kind: 'oppFoul', label: 'Prekršaj protivnika' })}>Prekršaj</button>
           <button className="btn opp" onClick={() => opp([{ type: EV.TURNOVER, team: TEAM.OPP, playerId: null }], 'Izgubljena protivnika')}>Izgubljena</button>
+          <button className="btn opp" onClick={() => opp([{ type: EV.REBOUND, team: TEAM.OPP, playerId: null, payload: { off: true } }], 'Skok napadački protivnika')}>Skok N</button>
           <button className="btn opp" onClick={() => opp([{ type: EV.TIMEOUT, team: TEAM.OPP, playerId: null }], 'Time-out protivnika')}>Time-out</button>
         </div>
         {game.trackOpponentShots && (

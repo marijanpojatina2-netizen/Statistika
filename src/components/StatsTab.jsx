@@ -164,6 +164,7 @@ export default function StatsTab({ game, stats, usName, oppName }) {
     ['3P', `${tf.fg3m}-${tf.fg3a}`, game.trackOpponentShots ? `${o.fg3m}-${o.fg3a}` : `${o.fg3m} pogodaka`],
     ['Slobodna', `${tf.ftm}-${tf.fta}`, `${o.ftm}-${o.fta}`],
     ['Skokovi', tf.reb, o.reb],
+    ['— napadački', tf.oreb, o.oreb],
     ['Izgubljene', tf.tov, o.tov],
     ['Prekršaji', tf.pf, o.pf],
     ['Time-outi', stats.timeouts.us, stats.timeouts.opp],
