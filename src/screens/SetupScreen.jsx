@@ -51,14 +51,18 @@ export default function SetupScreen({
   const clearStarters = () => { touched.current = true; setStarters([]) }
 
   const applyTemplate = (t) => {
-    setHomeName(t.homeName || '')
-    setAwayName(t.awayName || '')
-    setCompetition(t.competition || '')
+    // Predložak je preset EKIPE, ne utakmice: puni roster, postavke i NAŠE
+    // ime, a protivnika i datum NE dira — inače tiho pregazi upisano ime
+    // protivnika (polje je iznad predložaka i izvan pogleda na mobitelu).
+    const isHome = t.weAreHome !== false
+    const ourName = isHome ? t.homeName : t.awayName
+    setWeAreHome(isHome)
+    if (ourName) (isHome ? setHomeName : setAwayName)(ourName)
+    if (t.competition) setCompetition(t.competition)
     setQuarterLength(t.quarterLength ?? 10)
     setQuarterCount(t.quarterCount ?? 4)
     setTrackTime(!!t.trackTime)
     setTrackOpponentShots(!!t.trackOpponentShots)
-    setWeAreHome(t.weAreHome !== false)
     const rows = (t.roster || []).map((p) => ({ id: newId(), number: String(p.number), name: p.name }))
     setRoster(rows.length ? rows : Array.from({ length: 6 }, blank))
     // Predložak NE popunjava petorku — trener je bira sam, jer redoslijed
