@@ -4,7 +4,9 @@ import { fmtPct } from '../model/derive.js'
 import { boxScoreCsv, playByPlayCsv, seasonCsv, shareText, downloadCsv, gameFileBase } from '../model/exportCsv.js'
 import StatsTab from '../components/StatsTab.jsx'
 import { shareReportImage } from '../model/reportImage.js'
+import { shareBoxPdf } from '../model/boxPdf.js'
 import GameInfoEditor from '../components/GameInfoEditor.jsx'
+import { newId } from '../model/events.js'
 import CloudBadge from '../components/CloudBadge.jsx'
 
 const hrDate = (iso) => {
@@ -12,7 +14,7 @@ const hrDate = (iso) => {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('hr-HR')
 }
 
-export default function ArchiveScreen({ archive, onDelete, onEdit, onClose, onShare, sharePanel, cloud, onSync }) {
+export default function ArchiveScreen({ archive, onDelete, onEdit, onSaveTemplate, onClose, onShare, sharePanel, cloud, onSync }) {
   const [tab, setTab] = useState('utakmice')
   const [openId, setOpenId] = useState(null)
   const [confirmId, setConfirmId] = useState(null)
@@ -66,10 +68,32 @@ export default function ArchiveScreen({ archive, onDelete, onEdit, onClose, onSh
                         {isOpen ? 'Sakrij' : 'Otvori'}
                       </button>
                       <button className="btn sm primary" onClick={() => shareReportImage(g, s.stats).catch(() => {})}>Izvještaj</button>
+                      <button className="btn sm primary" onClick={() => shareBoxPdf(g, s.stats).catch(() => {})}>PDF</button>
                       <button className="btn sm" onClick={() => onShare(shareText(g, s.stats))}>Podijeli</button>
                       <button className="btn sm ghost" onClick={() => downloadCsv(boxScoreCsv(g, s.stats), `${gameFileBase(g)}-box.csv`)}>CSV box</button>
                       <button className="btn sm ghost" onClick={() => downloadCsv(playByPlayCsv(g), `${gameFileBase(g)}-play-by-play.csv`)}>CSV log</button>
                       <button className="btn sm ghost" onClick={() => setEditId(editId === g.id ? null : g.id)}>Uredi</button>
+                      {onSaveTemplate && (
+                        <button
+                          className="btn sm ghost"
+                          onClick={() => {
+                            const name = prompt('Naziv predloška (roster iz ove utakmice):', s.usName || 'Naša ekipa')
+                            if (!name) return
+                            onSaveTemplate({
+                              id: newId(), name: name.trim(), savedAt: Date.now(),
+                              homeName: g.weAreHome ? (g.homeName || '') : '',
+                              awayName: g.weAreHome ? '' : (g.awayName || ''),
+                              competition: g.competition || '',
+                              quarterLength: g.quarterLength, quarterCount: g.quarterCount,
+                              trackTime: !!g.trackTime, trackOpponentShots: !!g.trackOpponentShots,
+                              weAreHome: g.weAreHome !== false,
+                              roster: (g.roster || []).map((p) => ({ number: p.number, name: p.name })),
+                            })
+                          }}
+                        >
+                          U predložak
+                        </button>
+                      )}
                       {confirmId === g.id ? (
                         <>
                           <button className="btn sm bad" onClick={() => { onDelete(g.id); setConfirmId(null); setOpenId(null) }}>Da, obriši</button>

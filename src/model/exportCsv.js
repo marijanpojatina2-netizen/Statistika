@@ -32,12 +32,12 @@ export const gameFileBase = (game) =>
 export function boxScoreCsv(game, stats) {
   const head = [
     'Broj', 'Igrač', game.trackTime ? 'MIN' : 'Četvrtine', 'PTS',
-    '2P pog', '2P šut', '3P pog', '3P šut', 'SB pog', 'SB šut', 'FG%',
+    '2P pog', '2P šut', '3P pog', '3P šut', 'SB pog', 'SB šut', 'FG%', '3P%', 'SB%',
     'OR', 'DR', 'REB', 'AST', 'STL', 'BLK', 'TO', 'PF', 'IZB', '+/-', 'EFF',
   ]
   const line = (r, label, number) => ([
     number, label, game.trackTime ? r.min : r.periods, r.pts,
-    r.fg2m, r.fg2a, r.fg3m, r.fg3a, r.ftm, r.fta, pctCell(r.fgPct),
+    r.fg2m, r.fg2a, r.fg3m, r.fg3a, r.ftm, r.fta, pctCell(r.fgPct), pctCell(r.fg3Pct), pctCell(r.ftPct),
     r.oreb, r.dreb, r.reb, r.ast, r.stl, r.blk, r.tov, r.pf, r.fd, r.plusMinus, r.eff,
   ])
   const rows = [

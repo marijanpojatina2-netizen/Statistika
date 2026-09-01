@@ -153,7 +153,16 @@ export default function SetupScreen({
                     · {(t.roster || []).length} igrača{t.competition ? ` · ${t.competition}` : ''}
                   </span>
                 </button>
-                <button className="btn ghost" style={{ width: 44, padding: 0 }} onClick={() => onDeleteTemplate && onDeleteTemplate(t.id)} aria-label="Obriši predložak">✕</button>
+                <button
+                  className="btn ghost"
+                  style={{ width: 44, padding: 0 }}
+                  onClick={() => {
+                    if (onDeleteTemplate && confirm(`Obrisati predložak "${t.name}"? Briše se za SVE trenere.`)) onDeleteTemplate(t.id)
+                  }}
+                  aria-label="Obriši predložak"
+                >
+                  ✕
+                </button>
               </div>
             ))}
           </div>

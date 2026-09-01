@@ -119,6 +119,8 @@ export default function StatsTab({ game, stats, usName, oppName }) {
     ['3P', (r) => `${r.fg3m}-${r.fg3a}`],
     ['SB', (r) => `${r.ftm}-${r.fta}`],
     ['FG%', (r) => (r.fgPct == null ? '–' : `${Math.round(r.fgPct)}%`)],
+    ['3P%', (r) => (r.fg3Pct == null ? '–' : `${Math.round(r.fg3Pct)}%`)],
+    ['SB%', (r) => (r.ftPct == null ? '–' : `${Math.round(r.ftPct)}%`)],
     ['OR', (r) => r.oreb],
     ['DR', (r) => r.dreb],
     ['SK', (r) => r.reb],
