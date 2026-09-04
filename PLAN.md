@@ -15,13 +15,13 @@ Procjene vremena su za jednog developera koji radi puno radno vrijeme na tome.
 
 | Pitanje | Odluka | Zašto |
 |---|---|---|
-| Platforma za rad na brodu | **Web aplikacija (PWA) na tabletu**, ne nativna app | Radi na iPadu i Androidu, crtanje prstom kroz canvas, offline pohrana, jedna baza koda. Nativni dio (LiDAR) tek u fazi 6. |
+| Platforma za rad na brodu | **Web aplikacija (PWA) na Android tabletu** (Chrome), ne nativna app | Crtanje prstom kroz canvas, offline pohrana, jedna baza koda. Isti PWA radi i na mobitelu, pa se fotografije za mjerenje mogu snimati boljom kamerom mobitela. |
 | Obrada slika | **Python poslužitelj** (FastAPI + OpenCV + shapely + ezdxf) | Sav postojeći kod u `krojevi/` je Python i već radi. Na tabletu se samo slika i crta. |
 | Metoda mjerenja u fazi 1 | **Folija + papir s mrežom** (postojeći cjevovod) | Već provjereno, točnost 1–2 mm. Ne bacamo ono što radi. |
 | Metoda mjerenja u fazi 3 | **Fotografija odozgo s ArUco markerima + poluautomatska kontura** | Mjeri se prostor na brodu bez folije. Točnost 2–4 mm ako je ploha ravna. |
 | Baza brodova | **Vlastita baza modela**, popunjena javnim podacima (specifikacije) + vlastite sheme rasporeda jastuka | Tvorničke tlocrte ne smijemo preuzeti i redistribuirati; koristimo ih samo kao referencu za vlastito crtanje. |
 | 3D (zakrivljeni) jastuci | **Nisu u fazi 1–4.** Rješavamo ih folijom, a app ih označi kao "3D, ručno" | Kamera iz jedne slike ne može izmjeriti zakrivljenu plohu. LiDAR/fotogrametrija ide u fazu 6. |
-| Izlazi | DXF (mm, 1:1), PDF 1:1 (A0 ili slijepljeni A4/A3), PLT/HPGL za ploter, JSON | Isto što već izlazi iz `krojevi/outputs.py`, prošireno s nestingom i spužvom. |
+| Izlazi | **PDF 1:1 slijepljen iz A4/A3** kao glavni izlaz, DXF (mm, 1:1), JSON | Radionica nema ploter. PDF se ispisuje na običnom printeru i lijepi; DXF služi za vanjsko rezanje (CNC spužva, kopirnica s A0 ploterom) i za ploter kad se kupi. HPGL ide u fazu 6. |
 
 ---
 
@@ -153,9 +153,16 @@ Predložak vezan uz varijantu, a ne uz model, štedi nam krive pretpostavke.
 - [ ] Odlučiti kako se crtaju sheme: prazna shema po tipu broda (jedrilica/katamaran, generički
       tlocrt) na koju se elementi slažu prstom. Ne treba precizna geometrija broda, samo
       prepoznatljiv raspored.
-- [ ] Za prvih 5 modela s kojima najčešće radite: nacrtati sheme i predloške ručno na tabletu.
-- [ ] Uvoz postojećih uzoraka iz `izlaz/konture_mm.json` kao prvih predložaka (Elan? Bavaria?
-      Treba mi info s kojeg su broda `KLUP LICE` i ostali).
+- [ ] Za prvih 5 modela nacrtati sheme i predloške ručno na tabletu. Odabrani po tome što ih
+      je u hrvatskim čarter flotama najviše i što pokrivaju oba tipa broda:
+      1. **Bavaria Cruiser 46** (2014–2020, 4 kabine),
+      2. **Beneteau Oceanis 46.1** (2018–, 4 kabine),
+      3. **Jeanneau Sun Odyssey 440** (2018–, 4 kabine),
+      4. **Lagoon 42** (2016–, 4 kabine),
+      5. **Bali 4.2** (2020–, 4 kabine; veliki setovi vanjskih ležajeva).
+      Ako se u prvim tjednima pojavi drugi model, on ide na popis umjesto zadnjeg.
+- [ ] Uvoz postojećih uzoraka iz `izlaz/konture_mm.json` kao prvih predložaka pod
+      "nepoznati model"; kad se sjetiš s kojeg su broda, premjeste se jednim klikom.
 
 ---
 
@@ -185,8 +192,12 @@ Predložak vezan uz varijantu, a ne uz model, štedi nam krive pretpostavke.
   slika sprema se lokalno i sinkronizira kad ima mreže.
 - **Fotografije:** `<input capture>` / MediaDevices API; slike se čuvaju u punoj rezoluciji
   (potrebne za mjerenje), umanjeni prikaz se radi na tabletu.
-- **Tablet:** iPad 10,9" ili 12,9" je najugodniji za crtanje. Android tableti rade isto, ali je
-  kamera u pravilu lošija; za mjerenje kamerom je važnija kamera nego OS.
+- **Tablet:** Android, Chrome kao preglednik (PWA, kamera, IndexedDB sve radi). Za crtanje je
+  dobar bilo koji tablet od 11" (Samsung Galaxy Tab S9/S9 FE ili A9+ kao jeftinija opcija).
+  **Kamera na Android tabletima je u pravilu slaba** (8 MP, bez stabilizacije). Zato mjerenje
+  kamerom (metoda B) planiramo tako da se fotografija može snimiti **mobitelom** (isti PWA,
+  ista prijava, isti posao) i da tablet služi za crtanje i pregled. Kalibracija leće se radi po
+  uređaju, pa se oba mobitela (tvoj i kolegin) kalibriraju jednom.
 
 ### 5.3 Akcije
 
@@ -277,7 +288,8 @@ spužva − 2 % zbog napetosti. Pravila su konfigurabilna po tipu elementa i mat
 Akcije:
 - [ ] Dizajn i tisak markera (kartice 80 mm, 12 kom u setu, mat papir, laminat, magnet).
 - [ ] Modul `measure_markers(image, marker_size_mm) -> plane, rectified image, error estimate`.
-- [ ] Kalibracija za 2–3 uređaja koje radionica koristi; postupak da se doda novi uređaj.
+- [ ] Kalibracija za tablet + 2 mobitela (tvoj i kolegin); postupak da se doda novi uređaj
+      (slikaj šahovnicu 15 puta, aplikacija sama izračuna parametre).
 - [ ] Segmentacija na dodir (MobileSAM na poslužitelju; CPU je dovoljan za jednu sliku u ~2 s).
 - [ ] Živi pomoćnik za snimanje (nagib iz žiroskopa, prepoznavanje markera na tabletu u JS-u
       preko OpenCV.js, samo da kaže "svi markeri vidljivi").
@@ -338,8 +350,8 @@ Za svaki element radionica treba:
 
 ### 8.2 Nesting (slaganje na rolu)
 
-- Ulaz: širina role (npr. 137 cm za Silvertex/Spradling vinil, 140–150 cm tkanine), smjer
-  tkanine (dozvoljene rotacije 0/180 ili slobodno), razmak između komada.
+- Ulaz: širina role iz tablice materijala (poglavlje 8.5; zadano 137 cm), smjer tkanine
+  (dozvoljene rotacije 0/180 ili slobodno), razmak između komada (zadano 15 mm).
 - Algoritam: za početak greedy "bottom-left" s rotacijama 0/90/180/270; kasnije genetski
   (SVGnest logika) ili libnest2d. Cilj je dobra, ne savršena iskoristivost; radionica i tako
   gleda i po potrebi pomakne.
@@ -351,10 +363,10 @@ Za svaki element radionica treba:
 |---|---|
 | `nacrt.pdf` | pregled cijelog broda po zonama, tablica elemenata s gabaritima, fotografije |
 | `kroj_1_1.dxf` | svi komadi 1:1 u mm, slojevi po elementu i tipu (LICE/DNO/TRAKA/SPUZVA), tekst šifre u komadu |
-| `kroj_1_1.pdf` | 1:1 za ispis na A0 ploteru; opcija slijepljenih A4/A3 s oznakama preklopa |
+| `kroj_1_1.pdf` | **glavni izlaz**: 1:1 slijepljen iz A4 ili A3 stranica, oznake preklopa i križići za poravnanje, kontrolni kvadrat 100 mm na svakoj stranici; ista datoteka ispisana u kopirnici na A0 daje jedan list |
 | `nesting_<tkanina>.dxf/.pdf` | složeno na rolu |
 | `spuzva.dxf/.pdf` | list za rezanje spužve |
-| `kroj.plt` (HPGL) | za ploter/rezač, ako radionica ima; treba mi model uređaja |
+| `kroj.plt` (HPGL) | tek kad se kupi ploter (faza 6); do tada DXF pokriva vanjsko rezanje |
 | `materijal.xlsx/csv` | popis materijala i količina |
 | `element.json` | sve u mm za arhivu/druge alate |
 
@@ -363,10 +375,45 @@ Akcije:
 - [ ] Trake: podjela po uglovima s tolerancijom, otvor za patent, oznake na traci.
 - [ ] Spužva: zasebni sloj i list.
 - [ ] Nesting v1 (greedy), prikaz u aplikaciji, ručno pomicanje komada prstom.
-- [ ] PDF 1:1 s tilingom na A4/A3 (oznake preklopa i kontrolni kvadrat 100 mm za provjeru mjerila
-      nakon ispisa).
-- [ ] Izvoz HPGL/PLT (provjeriti koji ploter).
+- [ ] PDF 1:1 s tilingom na A4/A3 (oznake preklopa, križići za lijepljenje, kontrolni kvadrat
+      100 mm na svakoj stranici; ispis u "stvarnoj veličini" bez skaliranja, uputa u PDF-u).
+      Ovo je prvi izlaz koji se radi, jer bez plotera je to jedini put do stola za krojenje.
 - [ ] Popis materijala i cjenik po m² kao temelj za ponudu.
+
+### 8.4 Pravila radionice: početne vrijednosti (ti odlučuješ kasnije, ovo je start)
+
+Sve je u tablici `workshop_rules` i mijenja se u aplikaciji bez programera. Brojevi su uobičajeni
+u nautičkoj tapetariji i usklađeni s onim što već radite (offset 10 mm i traka 90 mm u
+`outputs.py` odgovaraju šavu 10 mm i debljini 70 mm).
+
+| Pravilo | Zadano | Napomena |
+|---|---|---|
+| Dodatak za šav | 10 mm | na svim rubovima lica, dna i traka |
+| Spužva prema izmjerenom prostoru | −5 mm po strani (unutrašnjost), −3 mm (kokpit) | jastuk mora ući bez guranja; kokpit tjesnije zbog vjetra |
+| Navlaka prema spužvi | −2 % duljine i širine (vinil), −1 % (tkanina) | napetost, bez nabora |
+| Širina trake | debljina + 2 × šav | 70 mm spužva → 90 mm traka |
+| Razmak komada u nestingu | 15 mm | |
+| Patent | na donjoj/stražnjoj traci, duljina = najduža ravna stranica − 100 mm | spiralni patent 5 mm, plastika |
+| Keder | opcija po elementu, duljina = opseg lica (+ opseg dna ako je obostrano) | |
+| Debljina spužve, kokpit sjedalo | 50 mm | zatvorenoćelijska ili HR pjena s dren-tkaninom |
+| Debljina spužve, kokpit naslon | 40 mm | |
+| Debljina spužve, ležaj za sunčanje | 50 mm | |
+| Debljina spužve, salon sjedalo | 90 mm | HR 35 kg/m³ |
+| Debljina spužve, salon naslon | 60 mm | |
+| Debljina spužve, madrac kabine | 100 mm | HR 30–35 kg/m³ |
+| Prag upozorenja prema predlošku | 20 mm | odstupanje ruba od nominalnog obrisa modela |
+
+### 8.5 Materijali: početna tablica
+
+| Materijal | Širina role | Tipična upotreba | Smjer |
+|---|---|---|---|
+| Marine vinil (Spradling Silvertex, Nautolex i sl.) | 137 cm | kokpit, ležajevi, vanjski nasloni | slobodno |
+| Sunbrella Marine / Plus | 137 cm (neke 152 cm) | kokpit, sunčališta, navlake | uzduž |
+| Mrežasta dren tkanina (Phifertex, Batyline) | 137–150 cm | dno vanjskih jastuka | slobodno |
+| Unutarnja tkanina (Alcantara-tip, mikrofibra) | 140 cm | salon, kabine | uzduž |
+| Dren spužva / podložna mreža (3D mesh) | 100–150 cm | ispod vanjskih jastuka | slobodno |
+
+Svaki materijal ima cijenu po m, pa popis materijala odmah daje trošak; ponuda je onda mali korak.
 
 ---
 
@@ -382,9 +429,12 @@ Akcije:
 
 - **Poslužitelj:** jedan VPS (Hetzner, 4 vCPU / 16 GB, ~40 €/mj) u Dockeru; Caddy za HTTPS;
   nightly backup baze i MinIO-a na drugi disk/S3.
-- **Autentikacija:** e-mail + lozinka, uloge: mjeritelj (teren), radionica, admin.
-- **Sinkronizacija:** svaki objekt ima `updated_at` i `device_id`; tablet šalje promjene u redu,
-  sukobi se rješavaju "zadnji piše" uz zapis povijesti (za konture čuvamo sve verzije).
+- **Korisnici:** dvoje (ti i kolega), oba s punim pravima; e-mail + lozinka, bez složenih uloga
+  u fazi 1. Svaka promjena pamti tko ju je napravio, pa se vidi tko je što izmjerio.
+- **Sinkronizacija:** svaki objekt ima `updated_at` i `device_id`; uređaj šalje promjene u redu.
+  Budući da vas dvoje možete istodobno raditi na istom brodu (tablet + mobitel), sukobi se
+  rješavaju **po elementu**: zadnja potvrda pobjeđuje, ali sve verzije konture ostaju i mogu se
+  vratiti jednim dodirom.
 - **Obrada slika:** posao u redu, status u aplikaciji (čeka / obrađuje / gotovo / greška),
   kontrolna slika za svaki korak.
 
@@ -449,18 +499,19 @@ workshop_rules(id, kind, fabric, seam_mm, foam_offset_mm, cover_shrink_pct, roll
 ### Faza 4: krojevi, nesting, izvozi (3–4 tjedna)
 
 - [ ] Lice/dno/trake/spužva s dodacima i zarezima.
-- [ ] Nesting v1, PDF 1:1 tiling, HPGL, popis materijala.
+- [ ] PDF 1:1 tiling (prvo), nesting v1, popis materijala s cijenama.
 - **Gotovo kada:** radionica sašije komplet za jedan brod isključivo iz izlaza aplikacije.
 
 ### Faza 5: pilot (4 tjedna, preklapa se s 4)
 
 - [ ] 5 brodova (bar 2 katamarana), svaki element mjeren s dvije metode radi usporedbe.
 - [ ] Dnevnik grešaka, popravci, podešavanje pragova i pravila.
-- [ ] Obuka drugog mjeritelja; provjera da app radi bez autora.
+- [ ] Kolega radi jedan brod sam, od odabira modela do izvoza; sve gdje zapne ide na popis popravaka.
 
 ### Faza 6: proširenja (nakon pilota)
 
 - LiDAR/3D za naslone i zakrivljene ležajeve.
+- HPGL/PLT izvoz i izravno slanje na ploter ili rezač, kad se kupi.
 - Ponude i računi iz popisa materijala.
 - Fotografije ugrađenih jastuka uz trup (za sljedeći isti brod i za marketing).
 - Više radionica / više jezika, ako se softver ikad nudi drugima.
@@ -484,25 +535,27 @@ radionice (bar 2 sata tjedno za testiranje i odluke).
 
 ---
 
-## 13. Što trebam od tebe (odluke koje mijenjaju plan)
+## 13. Odluke (donesene)
 
-1. **Tablet:** iPad ili Android? (Za crtanje i kameru preporuka je iPad; ako je već kupljen
-   Android, radi i to.)
-2. **Ploter / rezač:** imate li ga i koji model? Određuje format izvoza (HPGL, DXF, PLT, SVG).
-3. **Tkanine i širine rola** koje najčešće koristite (Silvertex 137 cm? Sunbrella 137/152 cm?).
-4. **Pravila radionice:** dodatak za šav, razlika spužva/prostor, smanjenje navlake, standardne
-   debljine spužve.
-5. **Prvih 5 modela** brodova za sheme i pilot. I s kojeg su broda postojeći uzorci u `fotke/`.
-6. **Tko još mjeri** osim tebe (određuje koliko truda ide u vodiče i zaštitu od grešaka u aplikaciji).
+| Pitanje | Odluka | Posljedica u planu |
+|---|---|---|
+| Tablet | **Android** | PWA u Chromeu; fotografije za mjerenje s mobitela jer tablet ima slabu kameru (5.2) |
+| Ploter | **Nema ga** | PDF 1:1 slijepljen iz A4/A3 je glavni izlaz; DXF za vanjsko rezanje; HPGL u fazi 6 (8.3) |
+| Tkanine i role | Zadano 137 cm, tablica materijala u 8.5 | mijenja se u aplikaciji |
+| Pravila radionice | Početne vrijednosti u 8.4 | mijenjaju se u aplikaciji, ne u kodu |
+| Prvih 5 modela | Bavaria Cruiser 46, Oceanis 46.1, Sun Odyssey 440, Lagoon 42, Bali 4.2 | sheme i predlošci u fazi 1 (4.4) |
+| Korisnici | Ti i kolega | dva računa, puna prava, sukobi po elementu s poviješću (9) |
+
+Što bi još dobro došlo, ali ne blokira početak: koji su mobiteli (model) za kalibraciju kamere i
+s kojeg su broda uzorci u `fotke/`.
 
 ---
 
 ## 14. Prvi koraci (ovaj tjedan)
 
-1. Odgovori na 6 pitanja iznad.
-2. Napravim strukturu repozitorija i prepakiram `krojevi/` u paket s testovima na 4 postojeće
+1. Napravim strukturu repozitorija i prepakiram `krojevi/` u paket s testovima na 4 postojeće
    fotografije (ništa se ne mijenja u rezultatu, samo API).
-3. CSV startnog popisa brodova + seed skripta.
-4. Wireframe 6 ekrana za pregled.
-5. Naručiti tisak ArUco markera (dizajn je pola sata, tisak i laminat par dana) da budu spremni
+2. CSV startnog popisa brodova + seed skripta, s prvih 5 modela označenih kao prioritet.
+3. Wireframe 6 ekrana za pregled na Android tabletu.
+4. Naručiti tisak ArUco markera (dizajn je pola sata, tisak i laminat par dana) da budu spremni
    za fazu 3.
