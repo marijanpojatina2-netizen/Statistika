@@ -204,11 +204,14 @@ Predložak vezan uz varijantu, a ne uz model, štedi nam krive pretpostavke.
 
 ### 5.3 Akcije
 
-- [ ] Wireframe 6 ekrana (papir ili Figma), proći ga s nekim iz radionice prije koda.
-- [ ] Osnovni skelet PWA: navigacija, pohrana, sinkronizacija, prijava korisnika.
-- [ ] Editor poligona na canvasu: crtanje, uređivanje točaka, zaokruživanje, 90°, zrcaljenje.
-- [ ] Shema broda: generički tlocrt jedrilice i katamarana (SVG), zone, slaganje elemenata.
-- [ ] Obrazac elementa i standard šifri.
+- [x] Umjesto wireframea odmah radna verzija (`app/`), jer je jeftinije mijenjati živo sučelje.
+- [x] Skelet PWA: navigacija (poslovi, novi posao, posao, element, mjerenje), service worker za
+      ljusku. **Nije još:** offline red za podatke i prijava korisnika (faza 2).
+- [x] Editor poligona na canvasu: dodir dodaje točku, povlačenje pomiče, ukloni zadnju, očisti,
+      zrcali L↔D, zrcalna kopija elementa. **Nije još:** zaokruživanje ugla i 90° (za obris u mm,
+      ne za skicu; ide uz metodu B).
+- [x] Shema broda: generički tlocrt jedrilice i katamarana (canvas), zone kao filtar.
+- [x] Obrazac elementa (šifra, naziv, zona, tip, debljina, napomena).
 - [ ] Test na stvarnom tabletu na suncu (čitljivost, veličina dodirnih točaka).
 
 ---
@@ -484,19 +487,24 @@ workshop_rules(id, kind, fabric, seam_mm, foam_offset_mm, cover_shrink_pct, roll
 
 ### Faza 1: baza brodova + odabir + crtanje prstom (3–4 tjedna)
 
-- [ ] Seed baze brodova iz CSV-a.
-- [ ] PWA skelet, prijava, offline pohrana.
-- [ ] Odabir broda i varijante, sheme zona.
-- [ ] Editor poligona prstom, obrazac elementa, zrcaljenje, kopiranje.
-- [ ] Metoda C (ručne mjere) jer je trivijalna i odmah daje vrijednost.
+- [x] Seed baze brodova iz CSV-a (automatski pri prvom pokretanju poslužitelja).
+- [x] PWA skelet (bez prijave i offline reda; vidi 5.3).
+- [x] Odabir broda (varijante još nisu zaseban entitet; godište i kabine su na modelu).
+- [x] Editor poligona prstom, obrazac elementa, zrcaljenje, zrcalna kopija.
+- [ ] Metoda C (ručne mjere): API prima ručni obris (`PATCH /elements/{id}` s `outline_mm`), ekran
+      s obrascem pravokutnik/trapez još nije napravljen.
 - **Gotovo kada:** na tabletu se može otvoriti posao, izabrati Bavaria 46, nacrtati 30
   elemenata kokpita i salona i sve to sinkronizirati na poslužitelj.
+- **Stanje:** radi od kraja do kraja u pregledniku (prolaz s dodirima u `tools/ui_walkthrough.py`).
+  Ostaje test na stvarnom tabletu, prijava i offline red.
 
 ### Faza 2: metoda A u aplikaciji (2 tjedna)
 
-- [ ] `jastuk_cv` paket, API `POST /measure/grid`, worker.
-- [ ] Ekran: slikaj, dodirni ishodište, os x, unutrašnjost; prikaz konture; ručna korekcija.
-- [ ] Izvoz DXF/PDF kao i danas, ali po poslu.
+- [x] `jastuk_cv` paket, `POST /api/elements/{id}/measure` (sinkrono, ~2 s po slici; worker kad
+      zatreba).
+- [x] Ekran: slikaj, dodirni ishodište, os x, unutrašnjost (lupa za finu doradu); prikaz konture
+      preko fotografije; ocjena kvalitete. **Nije još:** ručna korekcija točaka konture prstom.
+- [x] Izvoz DXF/PDF po poslu (`POST /api/jobs/{id}/export`).
 - **Gotovo kada:** kompletni set za jedan brod prođe kroz aplikaciju bez uređivanja `config.py`.
 
 ### Faza 3: metoda B, markeri (4–6 tjedana)
@@ -573,3 +581,6 @@ Još bi dobro došlo, ali ne blokira: s kojeg su broda uzorci u `fotke/` i koji 
 3. Wireframe 6 ekrana za pregled na Android tabletu.
 4. Naručiti tisak ArUco markera (dizajn je pola sata, tisak i laminat par dana) da budu spremni
    za fazu 3.
+5. ~~Faza 1 i 2 u prvoj radnoj verziji.~~ Gotovo: `api/` + `app/`, cijeli tijek posao → crtanje →
+   mjerenje → izvoz radi u pregledniku. Sljedeće: pokrenuti na tabletu i mobitelu u radionici,
+   pa ručna korekcija konture prstom, prijava, offline red, zatim faza 3 (markeri).

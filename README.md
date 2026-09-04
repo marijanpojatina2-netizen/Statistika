@@ -10,13 +10,35 @@ krojeve. Ovo je prva metoda mjerenja iz [`PLAN.md`](PLAN.md) (metoda A); ostatak
 ```bash
 pip install -e ".[test]"          # ili: pip install opencv-python-headless numpy scipy scikit-image shapely ezdxf matplotlib
 python3 -m jastuk_cv fotke/elementi.json --out izlaz
-python3 -m pytest                  # 17 testova, ~12 s (regresija na 4 fotografije + geometrija)
+python3 -m pytest                  # 21 test, ~20 s (regresija na 4 fotografije, geometrija, API od kraja do kraja)
 python3 data/seed_boats.py         # provjera startnog popisa brodova
 ```
 
 `fotke/elementi.json` je popis elemenata (po fotografiji: ishodište mreže, os x, točka unutar
 uzorka; putanje relativne prema JSON-u). Gustoća piksela `px_per_cm` je neobavezna, procijeni
 se iz mreže.
+
+## Aplikacija (faza 1): poslužitelj + web sučelje za tablet
+
+```bash
+pip install fastapi "uvicorn[standard]" sqlmodel python-multipart
+python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+# na tabletu/mobitelu u istoj mreži otvori  http://<ip-računala>:8000/
+```
+
+Što radi: popis poslova, novi posao s odabirom modela broda (pretraga po 90 modela iz
+`data/brodovi.csv`, ili dodavanje novog), shema broda (jedrilica/katamaran) po zonama na kojoj se
+elementi **crtaju prstom** (dodir dodaje točku, povlačenje pomiče, zrcaljenje L↔D, zrcalna kopija
+elementa), **mjerenje** elementa s fotografije folije kroz **tri dodira** (ishodište mreže, točka na
+osi x, točka u uzorku; lupa za finu doradu), prikaz konture preko fotografije s ocjenom kvalitete,
+prihvat, i **izvoz DXF/PDF** za sve izmjerene elemente posla.
+
+Podaci su u `var/` (SQLite baza, fotografije, izvozi; mapa se mijenja s `JASTUK_VAR`). Ljuska
+aplikacije radi bez mreže (service worker); podaci se za sada šalju odmah, red za offline
+sinkronizaciju je na popisu za fazu 2. Prijava korisnika još ne postoji.
+
+Prolaz kroz sučelje s dodirima i snimkama ekrana: `tools/ui_walkthrough.py` (traži pokrenut
+poslužitelj i Playwright).
 
 ## API (za poslužitelj aplikacije)
 
@@ -46,6 +68,9 @@ osi x** (npr. oznaka "50") i **jedna točka unutar uzorka**. Alternativno se mog
 | `jastuk_cv/measure.py` | javni API `measure_grid`, `GridMeasurement`, izravnavanje kuta na 90° |
 | `jastuk_cv/outputs.py` | DXF/PDF 1:1, offset, trake |
 | `jastuk_cv/cli.py` | naredbeni redak (`python3 -m jastuk_cv`) |
+| `api/` | FastAPI poslužitelj: brodovi, poslovi, elementi, fotografije, mjerenje, izvoz (SQLite) |
+| `app/` | web aplikacija za tablet (PWA, bez build koraka): sheme, crtanje prstom, mjerenje, izvoz |
+| `tools/ui_walkthrough.py` | prolaz kroz sučelje u Chromiumu s dodirima i snimkama |
 | `tests/` | regresija na fotografijama + jedinični testovi geometrije |
 | `data/brodovi.csv` | startni popis 90 modela brodova (čarter Hrvatska), `seed_boats.py` provjera |
 | `fotke/` | 4 fotografije uzoraka + `elementi.json` |

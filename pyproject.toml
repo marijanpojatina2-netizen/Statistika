@@ -14,7 +14,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=7"]
+api = ["fastapi>=0.110", "uvicorn[standard]>=0.27", "sqlmodel>=0.0.16", "python-multipart>=0.0.9"]
+test = ["pytest>=7", "httpx>=0.25"]
 
 [project.scripts]
 jastuk-cv = "jastuk_cv.cli:main"
@@ -24,7 +25,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["jastuk_cv"]
+packages = ["jastuk_cv", "api"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

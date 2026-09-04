@@ -1,0 +1,44 @@
+:root { --ink:#16232e; --muted:#5e6c78; --bg:#f4f6f8; --card:#fff; --line:#d9dfe5; --brand:#0b3d5c; --accent:#f4b942;
+  --ok:#2e8b57; --warn:#d9822b; --bad:#c0392b; --draw:#1f77b4; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin:0; height:100%; background:var(--bg); color:var(--ink); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+body { display:flex; flex-direction:column; min-height:100vh; }
+header#top { display:flex; align-items:center; gap:12px; padding:10px 14px; background:var(--brand); color:#fff; position:sticky; top:0; z-index:5; }
+header .brand { color:#fff; text-decoration:none; font-weight:700; font-size:18px; }
+header #crumb { flex:1; opacity:.85; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+header #net { color:#7ee787; } header #net.off { color:#ff7b72; }
+main#view { flex:1; padding:14px; max-width:1100px; width:100%; margin:0 auto; }
+h1 { font-size:22px; margin:6px 0 14px; } h2 { font-size:17px; margin:18px 0 8px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:12px; }
+.row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+.grow { flex:1; min-width:140px; }
+label { display:block; font-size:13px; color:var(--muted); margin-bottom:4px; }
+input, select, textarea { width:100%; font:inherit; padding:11px 12px; border:1px solid var(--line); border-radius:10px; background:#fff; }
+button, .btn { font:inherit; font-weight:600; padding:12px 16px; border-radius:10px; border:1px solid var(--line); background:#fff; color:var(--ink); cursor:pointer; text-decoration:none; display:inline-block; min-height:46px; }
+button.primary, .btn.primary { background:var(--brand); color:#fff; border-color:var(--brand); }
+button.accent { background:var(--accent); border-color:var(--accent); }
+button.danger { color:var(--bad); }
+button:disabled { opacity:.5; }
+.list a.item { display:flex; align-items:center; gap:12px; padding:14px; background:var(--card); border:1px solid var(--line); border-radius:12px; margin-bottom:8px; color:inherit; text-decoration:none; }
+.item .t { font-weight:600; } .item .s { color:var(--muted); font-size:14px; }
+.chip { display:inline-block; padding:3px 9px; border-radius:99px; font-size:12px; font-weight:600; color:#fff; background:var(--muted); }
+.chip.nacrtan { background:#8a98a5; } .chip.izmjeren { background:var(--warn); } .chip.potvrđen { background:var(--ok); }
+.muted { color:var(--muted); } .small { font-size:13px; }
+.zones { display:flex; gap:6px; overflow-x:auto; padding-bottom:6px; }
+.zones button { padding:8px 12px; min-height:38px; } .zones button.on { background:var(--brand); color:#fff; border-color:var(--brand); }
+canvas.sketch { width:100%; touch-action:none; background:#eef3f7; border:1px solid var(--line); border-radius:12px; display:block; }
+.canvas-wrap { position:relative; }
+.tools { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+.hint { background:#fff8e6; border:1px solid #f0d9a0; padding:10px 12px; border-radius:10px; margin:10px 0; }
+.photo-wrap { position:relative; width:100%; overflow:hidden; border-radius:12px; border:1px solid var(--line); background:#222; }
+.photo-wrap canvas#pc { display:block; width:100%; touch-action:none; }
+.steps { display:flex; gap:6px; margin:10px 0; }
+.steps span { flex:1; text-align:center; padding:8px 4px; border-radius:8px; background:#e5eaef; font-size:13px; }
+.steps span.on { background:var(--accent); font-weight:700; } .steps span.done { background:#cfe8d8; }
+.mag { position:absolute; right:8px; top:8px; width:180px; height:180px; border:3px solid #fff; border-radius:12px; background:#000; touch-action:none; box-shadow:0 2px 12px rgba(0,0,0,.4); }
+table { border-collapse:collapse; width:100%; } td, th { padding:6px 8px; border-bottom:1px solid var(--line); text-align:left; font-size:14px; }
+#toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--ink); color:#fff; padding:12px 18px; border-radius:10px; z-index:9; max-width:90vw; }
+.files a { display:block; padding:10px 0; border-bottom:1px solid var(--line); }
+.spinner { display:inline-block; width:18px; height:18px; border:3px solid #ccc; border-top-color:var(--brand); border-radius:50%; animation:sp 1s linear infinite; vertical-align:middle; }
+@keyframes sp { to { transform:rotate(360deg); } }
+@media (min-width: 800px) { .two { display:grid; grid-template-columns: 1fr 1fr; gap:14px; } }
