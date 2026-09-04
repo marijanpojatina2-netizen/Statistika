@@ -295,19 +295,26 @@ aplikacija primjenjuje **pravila radionice**: npr. spužva = prostor − 5 mm po
 spužva − 2 % zbog napetosti. Pravila su konfigurabilna po tipu elementa i materijalu.
 
 Akcije:
-- [ ] Dizajn i tisak markera (kartice 80 mm, 12 kom u setu, mat papir, laminat, magnet).
-- [ ] Modul `measure_markers(image, marker_size_mm) -> plane, rectified image, error estimate`.
+- [x] Dizajn markera: `markeri/aruco_5x5_80mm_a4.pdf` (12 kom, kartice 100 mm, marker 80 mm, DICT_5X5_50),
+      provjereno rasterizacijom da je marker točno 80 mm. Tisak, laminat i magnet: na tebi.
+- [x] Modul `jastuk_cv/markers.py`: `fit_plane` (homografija iz svih markera bez kalibracije),
+      `rectify_plane` (1 px = 1 mm), dorada uglova markera i ruba na 50 % prijelaza (nepristrano
+      na zamućenje). Na sintetičkoj sceni: mjerilo 0,01 %, rub < 1 mm.
 - [ ] Kalibracija za tablet + mobitele; postupak da se doda novi uređaj (slikaj šahovnicu 15 puta,
       aplikacija sama izračuna parametre). Prvi uređaj: **Samsung Galaxy S25 Ultra**. Za mjerenje se
       koristi glavna kamera (široki kut i tele ne), u 12 MP ili 50 MP načinu, s isključenim
       "optimizatorom scene" i HDR-om jer mijenjaju lokalni kontrast; kalibracija vrijedi po
       kombinaciji uređaj + kamera + rezolucija, pa aplikacija to čita iz EXIF-a i odbija sliku iz
       nekalibrirane kombinacije.
-- [ ] Segmentacija na dodir (MobileSAM na poslužitelju; CPU je dovoljan za jednu sliku u ~2 s).
+- [x] Segmentacija na dodir, klasično: rast po boji od dodira + GrabCut dorada + dorada ruba;
+      kartice markera isključene. MobileSAM ostaje opcija ako klasika zakaže na stvarnim jastucima.
+- [x] Ručna korekcija konture prstom na ispravljenoj slici (pomakni, dodaj, obriši, izravnaj
+      između dvije točke, poništi, zum s dva prsta). Vrijedi za obje metode.
 - [ ] Živi pomoćnik za snimanje (nagib iz žiroskopa, prepoznavanje markera na tabletu u JS-u
       preko OpenCV.js, samo da kaže "svi markeri vidljivi").
 - [ ] Laboratorijski test: ploča 2 × 1 m s poznatim oblicima; izmjeriti grešku u 30 fotografija,
-      pod raznim kutovima i svjetlom. Cilj ≤ 3 mm na 95 % mjerenja.
+      pod raznim kutovima i svjetlom. Cilj ≤ 3 mm na 95 % mjerenja. **Sljedeći korak, treba
+      tiskane markere i S25 Ultru.**
 - [ ] Terenski test na 3 broda, usporedba s folijom.
 
 ### 6.4 Metoda C: ručne mjere
@@ -503,7 +510,7 @@ workshop_rules(id, kind, fabric, seam_mm, foam_offset_mm, cover_shrink_pct, roll
 - [x] `jastuk_cv` paket, `POST /api/elements/{id}/measure` (sinkrono, ~2 s po slici; worker kad
       zatreba).
 - [x] Ekran: slikaj, dodirni ishodište, os x, unutrašnjost (lupa za finu doradu); prikaz konture
-      preko fotografije; ocjena kvalitete. **Nije još:** ručna korekcija točaka konture prstom.
+      na ispravljenoj slici; ocjena kvalitete; ručna korekcija točaka konture prstom.
 - [x] Izvoz DXF/PDF po poslu (`POST /api/jobs/{id}/export`).
 - **Gotovo kada:** kompletni set za jedan brod prođe kroz aplikaciju bez uređivanja `config.py`.
 
@@ -582,5 +589,8 @@ Još bi dobro došlo, ali ne blokira: s kojeg su broda uzorci u `fotke/` i koji 
 4. Naručiti tisak ArUco markera (dizajn je pola sata, tisak i laminat par dana) da budu spremni
    za fazu 3.
 5. ~~Faza 1 i 2 u prvoj radnoj verziji.~~ Gotovo: `api/` + `app/`, cijeli tijek posao → crtanje →
-   mjerenje → izvoz radi u pregledniku. Sljedeće: pokrenuti na tabletu i mobitelu u radionici,
-   pa ručna korekcija konture prstom, prijava, offline red, zatim faza 3 (markeri).
+   mjerenje → izvoz radi u pregledniku.
+6. ~~Faza 3, metoda B: markeri, PDF za tisak, mjerenje jednim dodirom, ručna korekcija konture.~~
+   Gotovo u kodu i na sintetičkoj sceni. Sljedeće: ispiši `markeri/aruco_5x5_80mm_a4.pdf`, slikaj
+   S25 Ultrom nekoliko jastuka i ležajeva s markerima i pošalji fotografije; na njima se podešava
+   segmentacija i mjeri stvarna točnost. Zatim kalibracija kamere (šahovnica), prijava, offline red.

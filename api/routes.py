@@ -13,6 +13,8 @@ from pydantic import BaseModel
 from sqlmodel import Session, select, or_
 
 from jastuk_cv import measure_grid, outputs
+from jastuk_cv.markers import fit_plane, rectify_plane, segment_seed, markers_mask
+from jastuk_cv.measure import finish_polyline
 from . import db
 from .models import BoatModel, Element, Job, Measurement
 
@@ -241,20 +243,74 @@ def measure_element(el_id: int, m: MeasureIn, session: Session = Depends(db.get_
         raise HTTPException(422, f"mjerenje nije uspjelo: {ex}")
     ctl = res.control_images(img)
     cv2.imwrite(str(db.PHOTOS / f"{m.photo_id}_ctl.jpg"), ctl["rectified"], [cv2.IMWRITE_JPEG_QUALITY, 80])
+    cv2.imwrite(str(db.PHOTOS / f"{m.photo_id}_rect.jpg"), res.rect, [cv2.IMWRITE_JPEG_QUALITY, 75])
     outline_px = res.grid.cm_to_px(res.poly_mm / 10.0)
     d = res.to_dict()
+    # ispravljena slika: 1 px = 1 mm; x_mm = u + 10*xr0, y_mm = -v + 10*yr1 (y papira prema gore)
+    rect_to_mm = [[1, 0, 10.0 * res.x_range[0]], [0, -1, 10.0 * res.y_range[1]]]
     meas = Measurement(element_id=el.id, method="grid", photo_id=m.photo_id, params=m.model_dump(),
                        outline_mm=d["poly_mm"], corners=d["corners"], quality=d["quality"], perimeter_mm=res.perimeter_mm)
     session.add(meas)
     session.commit()
     session.refresh(meas)
-    return dict(measurement_id=meas.id, outline_mm=d["poly_mm"], outline_px=np.round(outline_px, 1).tolist(),
+    return dict(measurement_id=meas.id, method="grid", outline_mm=d["poly_mm"], outline_px=np.round(outline_px, 1).tolist(),
                 perimeter_mm=d["perimeter_mm"], bbox_mm=d["bbox_mm"], corners=d["corners"], quality=d["quality"],
-                control_url=f"/files/photos/{m.photo_id}_ctl.jpg")
+                control_url=f"/files/photos/{m.photo_id}_ctl.jpg",
+                rect_url=f"/files/photos/{m.photo_id}_rect.jpg", rect_size=[res.rect.shape[1], res.rect.shape[0]],
+                rect_to_mm=rect_to_mm)
+
+
+# --------------------------------------------------------------------------- mjerenje (metoda B: markeri)
+class MeasureMarkersIn(BaseModel):
+    photo_id: str
+    seed_px: tuple[float, float]
+    marker_mm: float = 80.0
+    dict_name: str = "DICT_5X5_50"
+
+
+@router.post("/elements/{el_id}/measure_markers")
+def measure_element_markers(el_id: int, m: MeasureMarkersIn, session: Session = Depends(db.get_session)):
+    """Fotografija odozgo s ArUco markerima + jedan dodir unutar elementa -> obris u mm i ispravljena
+    slika (1 px = 1 mm) na kojoj korisnik prstom popravlja konturu."""
+    el = session.get(Element, el_id)
+    if not el:
+        raise HTTPException(404, "element ne postoji")
+    path = db.PHOTOS / f"{m.photo_id}.jpg"
+    if not path.exists():
+        raise HTTPException(404, "fotografija ne postoji")
+    img = cv2.imread(str(path))
+    try:
+        plane = fit_plane(img, m.marker_mm, m.dict_name)
+        rect, origin = rectify_plane(img, plane)
+        seed_rect = plane.img_to_mm(m.seed_px)[0] - origin
+        poly_px, _ = segment_seed(rect, seed_rect, exclude_mask=markers_mask(rect, plane, origin))
+    except Exception as ex:                                  # noqa: BLE001
+        log.exception("mjerenje markerima nije uspjelo")
+        raise HTTPException(422, f"mjerenje nije uspjelo: {ex}")
+    p, corners = finish_polyline(poly_px + origin)
+    p = np.round(p, 2)
+    per = float(np.hypot(*np.diff(np.vstack([p, p[:1]]), axis=0).T).sum())
+    cv2.imwrite(str(db.PHOTOS / f"{m.photo_id}_rect.jpg"), rect, [cv2.IMWRITE_JPEG_QUALITY, 75])
+    q = plane.quality()
+    q["seed_rect_px"] = [round(float(seed_rect[0]), 1), round(float(seed_rect[1]), 1)]
+    corners_out = [dict(s_start_mm=round(c["s_start"], 1), s_end_mm=round(c["s_end"], 1),
+                        s_apex_mm=round(c["s_apex"], 1), turn_deg=round(c["turn_deg"], 1)) for c in corners]
+    meas = Measurement(element_id=el.id, method="markers", photo_id=m.photo_id, params=m.model_dump(),
+                       outline_mm=p.tolist(), corners=corners_out, quality=q, perimeter_mm=per)
+    session.add(meas)
+    session.commit()
+    session.refresh(meas)
+    markers_rect = [np.round(plane.img_to_mm(c) - origin, 1).tolist() for c in plane.corners_px]
+    return dict(measurement_id=meas.id, method="markers", outline_mm=p.tolist(),
+                outline_px=np.round(plane.mm_to_img(p), 1).tolist(), perimeter_mm=round(per, 1),
+                bbox_mm=(p.min(0).tolist(), p.max(0).tolist()), corners=corners_out, quality=q,
+                rect_url=f"/files/photos/{m.photo_id}_rect.jpg", rect_size=[rect.shape[1], rect.shape[0]],
+                rect_to_mm=[[1, 0, float(origin[0])], [0, 1, float(origin[1])]], markers_rect_px=markers_rect)
 
 
 class AcceptIn(BaseModel):
     measurement_id: int
+    outline_mm: Optional[list] = None      # obris koji je korisnik prstom popravio (mm)
 
 
 @router.post("/elements/{el_id}/accept")
@@ -263,6 +319,11 @@ def accept_measurement(el_id: int, a: AcceptIn, session: Session = Depends(db.ge
     meas = session.get(Measurement, a.measurement_id)
     if not el or not meas or meas.element_id != el.id:
         raise HTTPException(404, "element ili mjerenje ne postoji")
+    if a.outline_mm is not None:
+        edited = _clean_outline(a.outline_mm)
+        meas.params = dict(meas.params or {}, edited=True, outline_auto_mm=meas.outline_mm)
+        meas.outline_mm = edited
+        session.add(meas)
     el.outline_mm = meas.outline_mm
     el.measurement_id = meas.id
     el.method = meas.method

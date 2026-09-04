@@ -10,13 +10,34 @@ krojeve. Ovo je prva metoda mjerenja iz [`PLAN.md`](PLAN.md) (metoda A); ostatak
 ```bash
 pip install -e ".[test]"          # ili: pip install opencv-python-headless numpy scipy scikit-image shapely ezdxf matplotlib
 python3 -m jastuk_cv fotke/elementi.json --out izlaz
-python3 -m pytest                  # 21 test, ~20 s (regresija na 4 fotografije, geometrija, API od kraja do kraja)
+python3 -m pytest                  # 27 testova, ~35 s (regresija na 4 fotografije, geometrija, markeri na sintetičkoj sceni, API)
 python3 data/seed_boats.py         # provjera startnog popisa brodova
 ```
 
 `fotke/elementi.json` je popis elemenata (po fotografiji: ishodište mreže, os x, točka unutar
 uzorka; putanje relativne prema JSON-u). Gustoća piksela `px_per_cm` je neobavezna, procijeni
 se iz mreže.
+
+## Mjerenje s markerima (metoda B): prostor na brodu ili stari jastuk
+
+Na ravnu plohu (ležaj, sjedalo, stol, ili stari jastuk položen na ravno) polože se **4–8 ArUco
+markera** iz `markeri/aruco_5x5_80mm_a4.pdf` (ispis u stvarnoj veličini, 3 stranice, 12 markera po
+80 mm; generator `tools/make_markers.py`). Jedna fotografija odozgo, u aplikaciji **jedan dodir
+unutar elementa**, i kontura je na ekranu preko ispravljene slike (1 px = 1 mm), gdje se prstom
+popravlja: pomicanje, dodavanje i brisanje točaka, i "izravnaj između 2 točke" kojim se odsiječe
+dio koji nije trebao ući u mjerenje.
+
+Kako radi (`jastuk_cv/markers.py`): međusobni položaj markera nije poznat, ali svi su kvadrati
+poznate stranice u istoj ravnini. Traži se jedna homografija slika → ravnina takva da se svaki
+marker preslika u kvadrat od 80 mm (položaj i zakret svakog markera su slobodni parametri,
+zajednička nelinearna prilagodba). Uglovi markera i rub elementa dorađuju se na mjestu 50 %
+prijelaza intenziteta, što je nepristrano za meke (zamućene) rubove. Segmentacija: rast po boji od
+dodira + GrabCut dorada, kartice markera isključene. Na sintetičkoj sceni s poznatom istinom:
+mjerilo unutar 0,01 %, rub unutar 1 mm. Na stvarnim fotografijama točnost ovisi o ravnosti plohe,
+kutu snimanja i rasporedu markera; to se mjeri u pilotu. Za kalibraciju kamere (distorzija leće) je
+tu `markeri/kalibracija_sahovnica_a4.pdf`; koristi se u sljedećem koraku.
+
+Ograničenje: jedna fotografija mjeri ravnu plohu. Zakrivljeni nasloni idu na foliju (metoda A).
 
 ## Aplikacija (faza 1): poslužitelj + web sučelje za tablet
 
@@ -29,9 +50,9 @@ python3 -m uvicorn api.main:app --host 0.0.0.0 --port 8000
 Što radi: popis poslova, novi posao s odabirom modela broda (pretraga po 90 modela iz
 `data/brodovi.csv`, ili dodavanje novog), shema broda (jedrilica/katamaran) po zonama na kojoj se
 elementi **crtaju prstom** (dodir dodaje točku, povlačenje pomiče, zrcaljenje L↔D, zrcalna kopija
-elementa), **mjerenje** elementa s fotografije folije kroz **tri dodira** (ishodište mreže, točka na
-osi x, točka u uzorku; lupa za finu doradu), prikaz konture preko fotografije s ocjenom kvalitete,
-prihvat, i **izvoz DXF/PDF** za sve izmjerene elemente posla.
+elementa), **mjerenje** elementa: s markerima (jedan dodir) ili s folije na mreži (tri dodira: ishodište,
+os x, točka u uzorku; lupa za finu doradu), zatim **uređivanje konture prstom** na ispravljenoj slici
+(zum s dva prsta), prihvat, i **izvoz DXF/PDF** za sve izmjerene elemente posla.
 
 Podaci su u `var/` (SQLite baza, fotografije, izvozi; mapa se mijenja s `JASTUK_VAR`). Ljuska
 aplikacije radi bez mreže (service worker); podaci se za sada šalju odmah, red za offline
@@ -66,6 +87,8 @@ osi x** (npr. oznaka "50") i **jedna točka unutar uzorka**. Alternativno se mog
 | `jastuk_cv/grid.py` | detekcija crvene mreže, homografija, TPS, ispravljanje slike |
 | `jastuk_cv/contour.py` | kontura uzorka iz ispravljene slike, glađenje, uglovi |
 | `jastuk_cv/measure.py` | javni API `measure_grid`, `GridMeasurement`, izravnavanje kuta na 90° |
+| `jastuk_cv/markers.py` | metoda B: detekcija ArUco markera, prilagodba ravnine, ispravljanje, segmentacija na dodir, dorada ruba |
+| `markeri/` | PDF za tisak: 12 ArUco markera 80 mm (A4, 3 str.) i šahovnica za kalibraciju; `tools/make_markers.py` |
 | `jastuk_cv/outputs.py` | DXF/PDF 1:1, offset, trake |
 | `jastuk_cv/cli.py` | naredbeni redak (`python3 -m jastuk_cv`) |
 | `api/` | FastAPI poslužitelj: brodovi, poslovi, elementi, fotografije, mjerenje, izvoz (SQLite) |

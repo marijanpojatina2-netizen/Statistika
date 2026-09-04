@@ -42,3 +42,6 @@ table { border-collapse:collapse; width:100%; } td, th { padding:6px 8px; border
 .spinner { display:inline-block; width:18px; height:18px; border:3px solid #ccc; border-top-color:var(--brand); border-radius:50%; animation:sp 1s linear infinite; vertical-align:middle; }
 @keyframes sp { to { transform:rotate(360deg); } }
 @media (min-width: 800px) { .two { display:grid; grid-template-columns: 1fr 1fr; gap:14px; } }
+.tools button.on { background:var(--brand); color:#fff; border-color:var(--brand); }
+#methods label input { display:none; }
+[hidden] { display:none !important; }

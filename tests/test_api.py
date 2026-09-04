@@ -90,3 +90,40 @@ def test_app_shell(client):
     r = client.get("/")
     assert r.status_code == 200 and "Jastuk" in r.text
     assert client.get("/app.js").status_code == 200 and client.get("/sw.js").status_code == 200
+
+
+def test_markers_flow(client, tmp_path):
+    """Metoda B kroz API: sintetička fotografija s markerima, jedan dodir, ručna korekcija, prihvat, izvoz."""
+    from synth_scene import make_scene
+    import cv2
+    photo, truth, seed_px, Hp, S = make_scene(seed=3)
+    f = tmp_path / "markeri.jpg"
+    cv2.imwrite(str(f), photo, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    j = client.post("/api/jobs", json={"boat_name": "Markeri"}).json()
+    el = client.post(f"/api/jobs/{j['job']['id']}/elements", json={"code": "KLUPA L"}).json()
+    with open(f, "rb") as fh:
+        ph = client.post("/api/photos", files={"file": ("m.jpg", fh, "image/jpeg")}).json()
+    r = client.post(f"/api/elements/{el['id']}/measure_markers", json={"photo_id": ph["photo_id"], "seed_px": list(seed_px), "marker_mm": 80})
+    assert r.status_code == 200, r.text
+    m = r.json()
+    assert m["method"] == "markers" and m["quality"]["n_markers"] == 6 and m["quality"]["fit_rms_mm"] < 1.0
+    b = m["bbox_mm"]
+    (a, bb) = sorted(cv2.minAreaRect(np.array(m["outline_mm"], np.float32))[1])
+    assert a == pytest.approx(600, abs=6) and bb == pytest.approx(1200, abs=8)
+    assert client.get(m["rect_url"]).status_code == 200 and m["rect_size"][0] > 1000
+    assert len(m["markers_rect_px"]) == 6 and len(m["outline_px"]) == len(m["outline_mm"])
+    # ručna korekcija: korisnik odsiječe dio -> prihvati uređeni obris
+    edited = [[0, 0], [1000, 0], [1000, 500], [0, 500]]
+    el2 = client.post(f"/api/elements/{el['id']}/accept", json={"measurement_id": m["measurement_id"], "outline_mm": edited}).json()
+    assert el2["status"] == "izmjeren" and el2["method"] == "markers" and len(el2["outline_mm"]) == 4
+    me = client.get(f"/api/elements/{el['id']}").json()["measurement"]
+    assert me["params"]["edited"] is True and len(me["params"]["outline_auto_mm"]) > 20
+    ex = client.post(f"/api/jobs/{j['job']['id']}/export").json()
+    assert ex["n_elements"] == 1
+    # premalo markera -> 422 s porukom
+    blank = tmp_path / "prazno.jpg"
+    cv2.imwrite(str(blank), np.full((1200, 900, 3), 180, np.uint8))
+    with open(blank, "rb") as fh:
+        ph2 = client.post("/api/photos", files={"file": ("p.jpg", fh, "image/jpeg")}).json()
+    r = client.post(f"/api/elements/{el['id']}/measure_markers", json={"photo_id": ph2["photo_id"], "seed_px": [450, 600]})
+    assert r.status_code == 422 and "markera" in r.json()["detail"]

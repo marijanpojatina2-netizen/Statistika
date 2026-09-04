@@ -363,109 +363,268 @@ async function elementView(id) {
   window.onresize = () => { sc.refit(); render(); };
 }
 
-// ------------------------------------------------------------------ mjerenje: fotografija + 3 dodira
-const STEPS = ["ishodište mreže (0,0)", "točka na osi x (npr. oznaka 50)", "točka unutar uzorka", "rezultat"];
+// ------------------------------------------------------------------ geometrija za uređivanje konture
+function dpSimplify(pts, eps) {
+  if (pts.length < 5) return pts.slice();
+  const d2 = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy || 1;
+    const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L));
+    return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy); };
+  const rec = (a, b) => {
+    if (b - a < 2) return [];
+    let im = -1, dm = 0;
+    for (let i = a + 1; i < b; i++) { const d = d2(pts[i], pts[a], pts[b]); if (d > dm) { dm = d; im = i; } }
+    return dm > eps ? [...rec(a, im), im, ...rec(im, b)] : [];
+  };
+  // zatvorena krivulja: podijeli na dva luka između najudaljenijih točaka
+  let i0 = 0, i1 = 0, best = 0;
+  for (let i = 0; i < pts.length; i += Math.max(1, Math.floor(pts.length / 60)))
+    for (let j = i + 1; j < pts.length; j += Math.max(1, Math.floor(pts.length / 60))) {
+      const d = Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]); if (d > best) { best = d; i0 = i; i1 = j; }
+    }
+  const idx = [i0, ...rec(i0, i1), i1, ...rec(i1, pts.length - 1 + (i0 === 0 ? 0 : 0))];
+  // drugi luk preko kraja niza: rotiraj
+  const rot = [...pts.slice(i1), ...pts.slice(0, i0 + 1)];
+  const back = rec.call(null, 0, rot.length - 1);
+  const out = [];
+  idx.slice(0, idx.indexOf(i1) + 1).forEach(i => out.push(pts[i]));
+  back.forEach(i => out.push(rot[i]));
+  return out;
+}
+function segDist(p, a, b) {
+  const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy || 1;
+  const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L));
+  return [Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy), t];
+}
+
+// ------------------------------------------------------------------ mjerenje: fotografija + dodiri + uređivanje konture
+const METHODS = {
+  markers: { label: "Markeri (prostor ili stari jastuk)", steps: ["dodir unutar elementa", "kontura"],
+    hints: ["Dodirni bilo gdje unutar plohe koju mjeriš (jastuk ili prostor). Ne na marker.", ""] },
+  grid: { label: "Folija na papiru s mrežom", steps: ["ishodište mreže (0,0)", "točka na osi x (npr. oznaka 50)", "točka unutar uzorka", "kontura"],
+    hints: ["Dodirni ishodište mreže (0,0).", "Dodirni oznaku na osi x (npr. 50).", "Dodirni unutar uzorka.", ""] },
+};
 async function measureView(id) {
   const d = await api(`/elements/${id}`);
   const e = d.element;
   crumb.textContent = `${d.job.boat_name || boatLabel(d.boat)} › ${e.code} › mjerenje`;
+  let method = "markers";
   view.innerHTML = `
     <div class="row"><h1 class="grow">Mjerenje: ${esc(e.code)}</h1><a class="btn" href="#/posao/${e.job_id}">Natrag</a></div>
     <div class="card" id="pick">
-      <p>Folija s nacrtanim obrisom na papiru s crvenom mrežom. Cijeli uzorak i barem dvije oznake brojeva na osima u kadru, bez sjene preko crvenih linija, slikaj što okomitije.</p>
-      <label class="btn primary">📷 Slikaj / odaberi fotografiju<input id="file" type="file" accept="image/*" capture="environment" hidden></label>
-      <span id="up" class="muted small"></span>
+      <div class="row" id="methods">${Object.entries(METHODS).map(([k, m]) => `<label class="btn ${k === method ? "primary" : ""}" data-m="${k}"><input type="radio" name="m" value="${k}" ${k === method ? "checked" : ""} hidden>${m.label}</label>`).join("")}</div>
+      <p id="mhint" class="small" style="margin:10px 0 8px"></p>
+      <div class="row">
+        <label class="btn primary">📷 Slikaj / odaberi fotografiju<input id="file" type="file" accept="image/*" capture="environment" hidden></label>
+        <span id="up" class="muted small"></span>
+        <span id="opts" class="row small"><label style="margin:0">marker <input id="mk" type="number" value="80" style="width:70px;padding:6px"> mm</label></span>
+      </div>
     </div>
     <div class="card" id="work" hidden>
-      <div class="steps" id="steps">${STEPS.map(s => `<span>${s}</span>`).join("")}</div>
+      <div class="steps" id="steps"></div>
       <div class="hint" id="hint"></div>
-      <div class="photo-wrap"><canvas id="pc"></canvas><canvas id="mag" class="mag" hidden></canvas></div>
-      <div class="tools">
+      <div class="photo-wrap" id="pw"><canvas id="pc"></canvas><canvas id="mag" class="mag" hidden></canvas></div>
+      <div class="tools" id="tapTools">
         <button id="back">← Natrag</button>
-        <label class="row" style="margin:0;gap:6px"><input type="checkbox" id="sq" style="width:auto"> kut u ishodištu izravnaj na 90°</label>
+        <label class="row" id="sqwrap" style="margin:0;gap:6px"><input type="checkbox" id="sq" style="width:auto"> kut u ishodištu izravnaj na 90°</label>
         <button class="primary" id="next">Dalje →</button>
       </div>
-      <div id="result" hidden></div>
+      <div id="editTools" hidden>
+        <div class="tools">
+          <button data-t="move" class="on">✋ Pomakni točku / sliku</button><button data-t="add">＋ Dodaj točku</button>
+          <button data-t="del">✕ Obriši točku</button><button data-t="cut">✂ Izravnaj između 2 točke</button>
+          <button id="undo">↶ Poništi</button><button id="zin">🔍+</button><button id="zout">🔍−</button><button id="zfit">⤢</button>
+        </div>
+        <p class="muted small" id="ehint"></p>
+        <div id="result"></div>
+        <div class="tools"><button id="redo">← Ponovi mjerenje</button><button class="primary" id="accept">✓ Prihvati konturu</button></div>
+      </div>
     </div>`;
-  let photo = null, img = null, step = 0, pts = [null, null, null], result = null;
+  const hintFor = () => $("#mhint").textContent = method === "markers"
+    ? "Položi 4–8 markera na plohu oko elementa (ne na sam element), slikaj odozgo što okomitije, cijeli element i svi markeri u kadru."
+    : "Folija s nacrtanim obrisom na papiru s crvenom mrežom, cijeli uzorak i oznake brojeva na osima u kadru, bez sjene preko crvenih linija.";
+  hintFor();
+  $("#methods").querySelectorAll("label").forEach(l => l.onclick = () => { method = l.dataset.m; $("#methods").querySelectorAll("label").forEach(x => x.classList.toggle("primary", x === l)); $("#opts").hidden = method !== "markers"; hintFor(); if (photo) startTaps(); });
+
+  // ---- stanje
+  let photo = null, img = null, step = 0, pts = [], result = null, rectImg = null;
   const pc = $("#pc"), mag = $("#mag"), ctx = pc.getContext("2d"), mctx = mag.getContext("2d");
   const dpr = window.devicePixelRatio || 1;
-  let cssW = 0, cssH = 0, scale = 1;    // scale: originalni px -> css px
+  let cssW = 0, cssH = 0, scale = 1;               // faza dodira: original px -> css px
+  const COL = ["#ff3b30", "#ffcc00", "#34c759"];
+  const M = () => METHODS[method];
+  const nTaps = () => M().steps.length - 1;
+
+  // ---- faza 1: dodiri na fotografiji
   function fitPhoto() {
     cssW = pc.parentElement.clientWidth; scale = cssW / photo.width; cssH = Math.round(photo.height * scale);
     pc.style.height = cssH + "px"; pc.width = Math.round(cssW * dpr); pc.height = Math.round(cssH * dpr);
     mag.width = 180 * dpr; mag.height = 180 * dpr;
   }
   const toOrig = ev => { const r = pc.getBoundingClientRect(); return [(ev.clientX - r.left) / r.width * photo.width, (ev.clientY - r.top) / r.height * photo.height]; };
-  const COL = ["#ff3b30", "#ffcc00", "#34c759"];
-  function draw() {
+  function drawTaps() {
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
     ctx.drawImage(img, 0, 0, photo.width, photo.height);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    if (pts[0] && pts[1]) { ctx.strokeStyle = COL[1]; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(pts[0][0] * scale, pts[0][1] * scale); ctx.lineTo(pts[1][0] * scale, pts[1][1] * scale); ctx.stroke(); }
+    if (method === "grid" && pts[0] && pts[1]) { ctx.strokeStyle = COL[1]; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(pts[0][0] * scale, pts[0][1] * scale); ctx.lineTo(pts[1][0] * scale, pts[1][1] * scale); ctx.stroke(); }
     pts.forEach((p, i) => {
       if (!p) return;
-      ctx.strokeStyle = COL[i]; ctx.lineWidth = 3;
+      ctx.strokeStyle = COL[i % 3]; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(p[0] * scale, p[1] * scale, 14, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(p[0] * scale - 22, p[1] * scale); ctx.lineTo(p[0] * scale + 22, p[1] * scale); ctx.moveTo(p[0] * scale, p[1] * scale - 22); ctx.lineTo(p[0] * scale, p[1] * scale + 22); ctx.stroke();
     });
-    if (result) {
-      ctx.strokeStyle = "#00e5ff"; ctx.lineWidth = 2.5; ctx.beginPath();
-      result.outline_px.forEach(([x, y], i) => i ? ctx.lineTo(x * scale, y * scale) : ctx.moveTo(x * scale, y * scale));
-      ctx.closePath(); ctx.stroke();
-    }
   }
   function drawMag(p) {
-    const Z = 4, S = 180 / Z, ps = photo.width / photo.preview_width;   // preview px po originalnom px
+    const Z = 4, S = 180 / Z, ps = photo.width / photo.preview_width;
     mag.hidden = false;
     mctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     mctx.fillStyle = "#000"; mctx.fillRect(0, 0, 180, 180);
     mctx.drawImage(img, (p[0] - S / 2) / ps, (p[1] - S / 2) / ps, S / ps, S / ps, 0, 0, 180, 180);
-    mctx.strokeStyle = COL[step]; mctx.lineWidth = 1.5;
+    mctx.strokeStyle = COL[step % 3]; mctx.lineWidth = 1.5;
     mctx.beginPath(); mctx.moveTo(90, 0); mctx.lineTo(90, 180); mctx.moveTo(0, 90); mctx.lineTo(180, 90); mctx.stroke();
   }
-  function ui() {
-    $("#steps").querySelectorAll("span").forEach((s, i) => { s.className = i < step ? "done" : i === step ? "on" : ""; });
-    $("#hint").textContent = step < 3 ? `Dodirni: ${STEPS[step]}. Za finu dorade povuci prstom, lupa gore desno pokazuje gdje je točka.` : "Provjeri konturu (svijetloplavo) i prihvati ili ponovi.";
-    $("#next").textContent = step === 2 ? "Izmjeri" : step === 3 ? "✓ Prihvati" : "Dalje →";
-    $("#next").disabled = step < 3 && !pts[step];
+  function uiTaps() {
+    const steps = M().steps;
+    $("#steps").innerHTML = steps.map((s, i) => `<span class="${i < step ? "done" : i === step ? "on" : ""}">${s}</span>`).join("");
+    $("#hint").textContent = M().hints[step] + " Za finu doradu povuci prstom; lupa gore desno pokazuje gdje je točka.";
+    $("#next").textContent = step === nTaps() - 1 ? "Izmjeri" : "Dalje →";
+    $("#next").disabled = !pts[step];
     $("#back").disabled = step === 0;
-    $("#result").hidden = step !== 3;
+    $("#sqwrap").hidden = method !== "grid";
+    $("#tapTools").hidden = false; $("#editTools").hidden = true; mag.hidden = true;
+  }
+  function startTaps() { step = 0; pts = []; result = null; fitPhoto(); drawTaps(); uiTaps(); bindTapEvents(); }
+  let dragging = false;
+  function bindTapEvents() {
+    pc.onpointerdown = ev => { pc.setPointerCapture(ev.pointerId); dragging = true; pts[step] = toOrig(ev); drawTaps(); drawMag(pts[step]); uiTaps(); };
+    pc.onpointermove = ev => { if (!dragging) return; pts[step] = toOrig(ev); drawTaps(); drawMag(pts[step]); };
+    pc.onpointerup = () => { dragging = false; };
   }
   $("#file").onchange = async ev => {
     const f = ev.target.files[0]; if (!f) return;
     $("#up").innerHTML = `<span class="spinner"></span> šaljem fotografiju…`;
     const fd = new FormData(); fd.append("file", f);
     try { photo = await api("/photos", { method: "POST", body: fd }); } catch (er) { toast(er.message); $("#up").textContent = ""; return; }
-    img = new Image(); img.src = photo.preview_url;
-    await img.decode();
+    img = new Image(); img.src = photo.preview_url; await img.decode();
     $("#up").textContent = `${photo.width} × ${photo.height} px`;
-    $("#work").hidden = false; step = 0; pts = [null, null, null]; result = null;
-    fitPhoto(); draw(); ui();
+    $("#work").hidden = false;
+    startTaps();
   };
-  let dragging = false;
-  pc.onpointerdown = ev => { if (step > 2) return; pc.setPointerCapture(ev.pointerId); dragging = true; pts[step] = toOrig(ev); draw(); drawMag(pts[step]); ui(); };
-  pc.onpointermove = ev => { if (!dragging) return; pts[step] = toOrig(ev); draw(); drawMag(pts[step]); };
-  pc.onpointerup = () => { dragging = false; };
-  $("#back").onclick = () => { if (step === 3) { result = null; } step = Math.max(0, step - 1); mag.hidden = true; draw(); ui(); };
+  $("#back").onclick = () => { step = Math.max(0, step - 1); uiTaps(); drawTaps(); };
   $("#next").onclick = async () => {
-    if (step < 2) { step++; mag.hidden = true; ui(); return; }
-    if (step === 2) {
-      $("#next").disabled = true; $("#hint").innerHTML = `<span class="spinner"></span> mjerim (mreža, ispravljanje, kontura)…`;
-      try {
-        result = await api(`/elements/${e.id}/measure`, { method: "POST", body: { photo_id: photo.photo_id, origin_px: pts[0], x_axis_px: pts[1], seed_px: pts[2], square_corner_cm: $("#sq").checked ? [0, 0] : null } });
-      } catch (er) { toast(er.message, 6000); $("#next").disabled = false; ui(); return; }
-      step = 3; mag.hidden = true; draw(); ui();
-      const q = result.quality, b = result.bbox_mm;
-      $("#result").innerHTML = `<table>
-        <tr><th>gabarit</th><td>${Math.round(b[1][0] - b[0][0])} × ${Math.round(b[1][1] - b[0][1])} mm</td><th>opseg</th><td>${Math.round(result.perimeter_mm)} mm</td></tr>
-        <tr><th>uglova</th><td>${result.corners.length}</td><th>čvorova mreže</th><td>${q.grid_nodes}</td></tr>
-        <tr><th>ostatak homografije</th><td>${q.homography_rms_px} px ${q.homography_rms_px > 3 ? "⚠️" : "✓"}</td><th>debljina poteza</th><td>${q.stroke_mm} mm (max ${q.stroke_max_mm})</td></tr>
-        </table><p class="small"><a href="${result.control_url}" target="_blank">kontrolna slika (ispravljeno, 1 px = 1 mm)</a></p>`;
-      return;
-    }
-    await api(`/elements/${e.id}/accept`, { method: "POST", body: { measurement_id: result.measurement_id } });
-    toast("Obris prihvaćen"); location.hash = "#/posao/" + e.job_id;
+    if (step < nTaps() - 1) { step++; uiTaps(); drawTaps(); return; }
+    $("#next").disabled = true; $("#hint").innerHTML = `<span class="spinner"></span> mjerim (markeri, ispravljanje, kontura)…`;
+    try {
+      result = method === "markers"
+        ? await api(`/elements/${e.id}/measure_markers`, { method: "POST", body: { photo_id: photo.photo_id, seed_px: pts[0], marker_mm: +$("#mk").value || 80 } })
+        : await api(`/elements/${e.id}/measure`, { method: "POST", body: { photo_id: photo.photo_id, origin_px: pts[0], x_axis_px: pts[1], seed_px: pts[2], square_corner_cm: $("#sq").checked ? [0, 0] : null } });
+    } catch (er) { toast(er.message, 8000); uiTaps(); return; }
+    rectImg = new Image(); rectImg.src = result.rect_url; await rectImg.decode();
+    startEdit();
   };
-  window.onresize = () => { if (photo) { fitPhoto(); draw(); } };
+
+  // ---- faza 2: uređivanje konture na ispravljenoj slici (1 px = 1 mm)
+  const A = () => result.rect_to_mm;                       // mm = A * [u, v, 1]
+  const toMm = ([u, v]) => [A()[0][0] * u + A()[0][1] * v + A()[0][2], A()[1][0] * u + A()[1][1] * v + A()[1][2]];
+  const toRect = ([x, y]) => { const a = A(); const det = a[0][0] * a[1][1] - a[0][1] * a[1][0]; const X = x - a[0][2], Y = y - a[1][2];
+    return [(a[1][1] * X - a[0][1] * Y) / det, (-a[1][0] * X + a[0][0] * Y) / det]; };
+  let poly = [], undo = [], tool = "move", cutSel = [], vs = 1, vx = 0, vy = 0, active = null;
+  const pointers = new Map();
+  let pinch = null;
+  const toScreen = ([u, v]) => [u * vs + vx, v * vs + vy];
+  const toWorld = ev => { const r = pc.getBoundingClientRect(); return [(ev.clientX - r.left - vx) / vs, (ev.clientY - r.top - vy) / vs]; };
+  function fitView() {
+    cssW = pc.parentElement.clientWidth; cssH = Math.min(Math.round(window.innerHeight * 0.68), Math.round(cssW * result.rect_size[1] / result.rect_size[0]));
+    pc.style.height = cssH + "px"; pc.width = Math.round(cssW * dpr); pc.height = Math.round(cssH * dpr);
+    // prikaži konturu s marginom
+    const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]);
+    const bx0 = Math.min(...xs) - 120, bx1 = Math.max(...xs) + 120, by0 = Math.min(...ys) - 120, by1 = Math.max(...ys) + 120;
+    vs = Math.min(cssW / (bx1 - bx0), cssH / (by1 - by0));
+    vx = (cssW - (bx0 + bx1) * vs) / 2; vy = (cssH - (by0 + by1) * vs) / 2;
+  }
+  function drawEdit() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = "#222"; ctx.fillRect(0, 0, cssW, cssH);
+    ctx.setTransform(dpr * vs, 0, 0, dpr * vs, dpr * vx, dpr * vy);
+    ctx.drawImage(rectImg, 0, 0, result.rect_size[0], result.rect_size[1]);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (result.markers_rect_px) {
+      ctx.strokeStyle = "#ffcc00"; ctx.lineWidth = 1.5;
+      result.markers_rect_px.forEach(m => { ctx.beginPath(); m.forEach((p, i) => { const s = toScreen(p); i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); }); ctx.closePath(); ctx.stroke(); });
+    }
+    ctx.strokeStyle = "#00e5ff"; ctx.lineWidth = 2.5; ctx.beginPath();
+    poly.forEach((p, i) => { const s = toScreen(p); i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); }); ctx.closePath(); ctx.stroke();
+    poly.forEach((p, i) => {
+      const s = toScreen(p); const sel = cutSel.includes(i);
+      ctx.beginPath(); ctx.arc(s[0], s[1], sel ? 9 : 6, 0, Math.PI * 2);
+      ctx.fillStyle = sel ? "#ff3b30" : i === active ? "#ffcc00" : "#fff"; ctx.fill(); ctx.strokeStyle = "#0b3d5c"; ctx.lineWidth = 1.5; ctx.stroke();
+    });
+    const b = bbox(poly.map(toMm));
+    let per = 0; for (let i = 0; i < poly.length; i++) { const a = poly[i], c = poly[(i + 1) % poly.length]; per += Math.hypot(a[0] - c[0], a[1] - c[1]); }
+    const q = result.quality;
+    $("#result").innerHTML = `<table><tr><th>gabarit</th><td>${Math.round(b[2] - b[0])} × ${Math.round(b[3] - b[1])} mm</td><th>opseg</th><td>${Math.round(per)} mm</td><th>točaka</th><td>${poly.length}</td></tr>
+      ${method === "markers" ? `<tr><th>markera</th><td>${q.n_markers} (${q.marker_ids.join(", ")})</td><th>ostatak prilagodbe</th><td>${q.fit_rms_mm} mm ${q.fit_rms_mm > 1.5 ? "⚠️" : "✓"}</td><th>rezolucija</th><td>${q.mm_per_px} mm/px</td></tr>`
+        : `<tr><th>čvorova mreže</th><td>${q.grid_nodes}</td><th>ostatak homografije</th><td>${q.homography_rms_px} px ${q.homography_rms_px > 3 ? "⚠️" : "✓"}</td><th>potez</th><td>${q.stroke_mm} mm</td></tr>`}</table>`;
+  }
+  const EH = { move: "Povuci točku da je pomakneš; povuci prazno mjesto da pomakneš sliku; dva prsta za zum.", add: "Dodirni konturu gdje želiš novu točku.",
+    del: "Dodirni točku koju želiš obrisati.", cut: "Dodirni dvije točke: sve između njih zamijeni ravna linija (odsijeca dio koji ne pripada elementu)." };
+  function setTool(t) { tool = t; cutSel = []; $("#editTools").querySelectorAll("[data-t]").forEach(b => b.classList.toggle("on", b.dataset.t === t)); $("#ehint").textContent = EH[t]; drawEdit(); }
+  function startEdit() {
+    poly = dpSimplify(result.outline_mm.map(toRect), 0.7);
+    undo = []; cutSel = []; active = null;
+    $("#steps").innerHTML = M().steps.map((s, i) => `<span class="${i === M().steps.length - 1 ? "on" : "done"}">${s}</span>`).join("");
+    $("#hint").textContent = "Provjeri konturu (svijetloplavo) na ispravljenoj slici i popravi je prstom gdje treba. Žuto su markeri.";
+    $("#tapTools").hidden = true; $("#editTools").hidden = false; mag.hidden = true;
+    fitView(); setTool("move");
+    bindEditEvents();
+  }
+  const nearest = w => { let bi = -1, bd = 1e9; poly.forEach((p, i) => { const d = Math.hypot(p[0] - w[0], p[1] - w[1]); if (d < bd) { bd = d; bi = i; } }); return [bi, bd * vs]; };
+  const push = () => { undo.push(poly.map(p => p.slice())); if (undo.length > 50) undo.shift(); };
+  function bindEditEvents() {
+    let panStart = null;
+    pc.onpointerdown = ev => {
+      pc.setPointerCapture(ev.pointerId);
+      pointers.set(ev.pointerId, [ev.clientX, ev.clientY]);
+      if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), vs, vx, vy, cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2 }; active = null; panStart = null; return; }
+      const w = toWorld(ev); const [i, ds] = nearest(w);
+      if (tool === "move") { if (ds < 18) { push(); active = i; } else panStart = { x: ev.clientX, y: ev.clientY, vx, vy }; }
+      else if (tool === "del") { if (ds < 22 && poly.length > 3) { push(); poly.splice(i, 1); drawEdit(); } }
+      else if (tool === "add") {
+        let bi = -1, bd = 1e9, bt = 0;
+        for (let k = 0; k < poly.length; k++) { const [dd, t] = segDist(w, poly[k], poly[(k + 1) % poly.length]); if (dd < bd) { bd = dd; bi = k; bt = t; } }
+        if (bd * vs < 30) { push(); const a = poly[bi], b = poly[(bi + 1) % poly.length]; poly.splice(bi + 1, 0, [a[0] + bt * (b[0] - a[0]), a[1] + bt * (b[1] - a[1])]); active = bi + 1; drawEdit(); }
+      } else if (tool === "cut") {
+        if (ds < 22) { cutSel.push(i); if (cutSel.length === 2) { push(); cutBetween(cutSel[0], cutSel[1]); cutSel = []; } drawEdit(); }
+      }
+    };
+    pc.onpointermove = ev => {
+      if (!pointers.has(ev.pointerId)) return;
+      pointers.set(ev.pointerId, [ev.clientX, ev.clientY]);
+      if (pinch && pointers.size === 2) {
+        const [a, b] = [...pointers.values()]; const dd = Math.hypot(a[0] - b[0], a[1] - b[1]); const r = pc.getBoundingClientRect();
+        const cx = (a[0] + b[0]) / 2 - r.left, cy = (a[1] + b[1]) / 2 - r.top, k = Math.max(0.2, Math.min(8, pinch.vs * dd / pinch.d)) / pinch.vs;
+        vs = pinch.vs * k; vx = cx - (pinch.cx - r.left - pinch.vx) * k + (cx - (pinch.cx - r.left)) * 0; vy = cy - (pinch.cy - r.top - pinch.vy) * k;
+        drawEdit(); return;
+      }
+      if (active !== null && tool === "move") { poly[active] = toWorld(ev); drawEdit(); }
+      else if (panStart) { vx = panStart.vx + ev.clientX - panStart.x; vy = panStart.vy + ev.clientY - panStart.y; drawEdit(); }
+    };
+    pc.onpointerup = pc.onpointercancel = ev => { pointers.delete(ev.pointerId); if (pointers.size < 2) pinch = null; active = null; panStart = null; drawEdit(); };
+  }
+  function cutBetween(i, j) {
+    if (i === j) return;
+    const n = poly.length; if (i > j) [i, j] = [j, i];
+    const inner = j - i - 1, outer = n - inner - 2;         // broj točaka na svakom luku
+    if (inner <= outer) poly.splice(i + 1, inner); else poly = poly.slice(i, j + 1);
+  }
+  const zoomAt = k => { const cx = cssW / 2, cy = cssH / 2; vx = cx - (cx - vx) * k; vy = cy - (cy - vy) * k; vs *= k; drawEdit(); };
+  $("#editTools").querySelectorAll("[data-t]").forEach(b => b.onclick = () => setTool(b.dataset.t));
+  $("#undo").onclick = () => { if (undo.length) { poly = undo.pop(); drawEdit(); } };
+  $("#zin").onclick = () => zoomAt(1.5); $("#zout").onclick = () => zoomAt(1 / 1.5); $("#zfit").onclick = () => { fitView(); drawEdit(); };
+  $("#redo").onclick = () => startTaps();
+  $("#accept").onclick = async () => {
+    if (poly.length < 3) { toast("kontura treba bar 3 točke"); return; }
+    await api(`/elements/${e.id}/accept`, { method: "POST", body: { measurement_id: result.measurement_id, outline_mm: poly.map(p => toMm(p).map(v => Math.round(v * 10) / 10)) } });
+    toast("Kontura prihvaćena"); location.hash = "#/posao/" + e.job_id;
+  };
+  window.onresize = () => { if (!photo) return; if (result) { fitView(); drawEdit(); } else { fitPhoto(); drawTaps(); } };
 }
