@@ -198,15 +198,18 @@ def estimate_px_per_cm(img_bgr: np.ndarray) -> float:
     return float(np.mean(sp)) / GRID_CM
 
 
-def detect_grid(img_bgr: np.ndarray, origin_px, xdir, ydir, px_per_cm: float | None = None, verbose=True) -> GridResult:
+def detect_grid(img_bgr: np.ndarray, origin_px, xdir, ydir, px_per_cm: float | None = None, verbose=True,
+                min_total_len: float = 350.0) -> GridResult:
+    """min_total_len: najmanja ukupna duljina (px) crvene linije da uđe u obitelj; niže (npr. 200) kad
+    folija prekriva gotovo cijelu širinu papira pa su linije ispod nje slabe."""
     red = redness(img_bgr)
     if px_per_cm is None:
         px_per_cm = estimate_px_per_cm(img_bgr)
         log.info("  procijenjeno px/cm: %.2f", px_per_cm)
     xdir = np.asarray(xdir, float)
     ydir = np.asarray(ydir, float)
-    fam_v = detect_family(red, vertical=True)
-    fam_h = detect_family(red, vertical=False)
+    fam_v = detect_family(red, vertical=True, min_total_len=min_total_len)
+    fam_h = detect_family(red, vertical=False, min_total_len=min_total_len)
     # obitelj čije su linije paralelne s ydir su linije x = const
     if abs(ydir[1]) > abs(ydir[0]):
         x_lines_raw, y_lines_raw = fam_v, fam_h
