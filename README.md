@@ -50,3 +50,8 @@ Rezultati u `izlaz/`:
   `krojevi/config.py`): točke bliže od 14 cm kutu su uklonjene, kroz susjedne ravne dijelove
   obaju rubova provučeni su pravci i njihovo presjecište je vrh kuta.
 - Pretpostavka: crvene linije papira su točno 10 cm (natpisi 10/20/30 … uz linije).
+
+## Plan daljnjeg razvoja
+
+Detaljan plan softvera za mjerenje i kroj jastuka (baza brodova, sučelje na tabletu, mjerenje
+kamerom, krojne šablone) je u [`PLAN.md`](PLAN.md).
