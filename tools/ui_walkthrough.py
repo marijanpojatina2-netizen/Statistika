@@ -217,6 +217,20 @@ with sync_playwright() as p:
     page.wait_for_selector("#usetpl"); page.click("#usetpl")
     page.wait_for_selector("#list")
     print("PREDLOŽAK: elementi preuzeti, obris predloška preuzet bez mjerenja ✓")
+
+    # ---- nesting: povuci prvi komad prstom, zakreni, spremi; izvoz kaže ručni raspored
+    page.goto(BASE + "/#/nesting/1"); page.wait_for_selector("#nc"); page.wait_for_timeout(300)
+    box = page.locator("#nc").bounding_box()
+    c0 = page.evaluate("() => { const n = window.__nest; const q = n.placed(n.parts()[0]); const xs = q.map(p=>p[0]), ys = q.map(p=>p[1]); return n.toS([(Math.min(...xs)+Math.max(...xs))/2, (Math.min(...ys)+Math.max(...ys))/2]); }")
+    before = page.evaluate("() => { const p = window.__nest.parts()[0]; return [p.dx, p.dy]; }")
+    page.mouse.move(box["x"] + c0[0], box["y"] + c0[1]); page.mouse.down(); page.mouse.move(box["x"] + c0[0] + 40, box["y"] + c0[1] + 60, steps=8); page.mouse.up()
+    after = page.evaluate("() => { const p = window.__nest.parts()[0]; return [p.dx, p.dy]; }")
+    assert after != before, "komad se nije pomaknuo"
+    page.click("#rot")
+    page.screenshot(path=f"{OUT}/16_nesting.png")
+    page.click("#save"); page.wait_for_timeout(400)
+    assert "ručni raspored" in page.inner_text("#info")
+    print("NESTING:", page.inner_text("#info")[:160])
     print("JS GREŠKE na kraju:", errors or "nema")
     b.close()
     sys.exit(0)

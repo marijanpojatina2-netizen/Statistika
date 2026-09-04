@@ -35,6 +35,7 @@ class Job(SQLModel, table=True):
     status: str = "aktivan"         # aktivan | isporučen | arhiva
     created_by: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    nesting: Optional[dict] = Field(default=None, sa_column=Column(JSON))   # ručno spremljeni raspored po materijalu
 
 
 class Element(SQLModel, table=True):

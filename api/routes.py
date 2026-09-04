@@ -529,6 +529,116 @@ def accept_measurement(el_id: int, a: AcceptIn, session: Session = Depends(db.ge
     return out
 
 
+# --------------------------------------------------------------------------- nesting (pregled i ručni raspored)
+def _nest_items(kroj_elems, material):
+    items = []
+    for k in kroj_elems:
+        if k["kroj"]["material"] != material:
+            continue
+        for part in k["kroj"]["parts"]:
+            if part["name"] in ("LICE", "DNO", "TRAKA"):
+                items.append(dict(id=f"{k['layer']} {part['name']}", poly=part["poly"], rot_free=material == "vinil", kind=part["name"]))
+    return items
+
+
+def _apply_layout(items, layout, width, gap):
+    """Ručni raspored {id: {rot_deg, dx, dy}} na trenutne dijelove; dijelovi bez zapisa idu automatski iznad."""
+    from jastuk_cv.nesting import _rot
+    placed, rest, top = [], [], 0.0
+    for it in items:
+        L = (layout or {}).get(it["id"])
+        if not L:
+            rest.append(it)
+            continue
+        q = _rot(np.asarray(it["poly"], float), int(L["rot_deg"]) % 360) + [float(L["dx"]), float(L["dy"])]
+        placed.append(dict(id=it["id"], rot_deg=int(L["rot_deg"]) % 360, dx=float(L["dx"]), dy=float(L["dy"]), poly=q,
+                           bbox=(q.min(0).tolist(), q.max(0).tolist())))
+        top = max(top, q[:, 1].max())
+    if rest:
+        auto, _ = NEST.nest(rest, width, gap)
+        for p in auto:
+            p["poly"] = p["poly"] + [0.0, top + gap]
+            p["dy"] += top + gap
+            p["bbox"] = (p["poly"].min(0).tolist(), p["poly"].max(0).tolist())
+            placed.append(p)
+    length = max((p["poly"][:, 1].max() for p in placed), default=0.0) + gap / 2
+    return placed, float(length)
+
+
+def nesting_for_job(kroj_elems, rules, saved: Optional[dict]) -> list:
+    out = []
+    gap = float(rules.get("gap_mm", 15))
+    for material in sorted({k["kroj"]["material"] for k in kroj_elems}):
+        items = _nest_items(kroj_elems, material)
+        width = float(rules["roll_width_mm"].get(material, 1370))
+        layout = (saved or {}).get(material)
+        try:
+            if layout:
+                placements, length = _apply_layout(items, layout, width, gap)
+            else:
+                placements, length = NEST.nest(items, width, gap)
+        except ValueError as ex:
+            out.append(dict(material=material, roll_width_mm=width, error=str(ex)))
+            continue
+        out.append(dict(material=material, roll_width_mm=width, length_mm=length, placements=placements, manual=bool(layout),
+                        utilization_pct=round(100 * NEST.utilization(placements, width, length), 1), items=items))
+    return out
+
+
+def _kroj_elems(session, job_id, rules):
+    elems = [e for e in session.exec(select(Element).where(Element.job_id == job_id).order_by(Element.id)).all() if e.outline_mm]
+    kroj = []
+    for e in elems:
+        p, corners = finish_polyline(np.asarray(e.outline_mm, float))
+        layer = (e.code or e.name or f"ELEMENT {e.id}").upper()
+        kroj.append(dict(layer=layer, kroj=PT.make_parts(p, e.thickness_mm, e.features or [], rules, zone=e.zone, code=layer)))
+    return kroj
+
+
+@router.get("/jobs/{job_id}/nesting")
+def get_nesting(job_id: int, auto: bool = False, session: Session = Depends(db.get_session)):
+    """Raspored na roli po materijalu za prikaz i uređivanje prstom (auto=1 zanemaruje spremljeni raspored)."""
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(404, "posao ne postoji")
+    rules = load_rules()
+    kroj = _kroj_elems(session, job_id, rules)
+    if not kroj:
+        raise HTTPException(422, "nijedan element nema izmjereni obris")
+    res = []
+    for n in nesting_for_job(kroj, rules, None if auto else job.nesting):
+        if n.get("error"):
+            res.append(dict(material=n["material"], roll_width_mm=n["roll_width_mm"], error=n["error"]))
+            continue
+        base = {it["id"]: np.round(np.asarray(it["poly"]) - np.asarray(it["poly"]).min(0), 1).tolist() for it in n["items"]}
+        res.append(dict(material=n["material"], roll_width_mm=n["roll_width_mm"], length_mm=round(n["length_mm"], 1), manual=n["manual"],
+                        utilization_pct=n["utilization_pct"], gap_mm=float(rules.get("gap_mm", 15)),
+                        parts=[dict(id=p["id"], rot_deg=p["rot_deg"], dx=round(p["dx"], 1), dy=round(p["dy"], 1), base=base[p["id"]],
+                                    rot_free=(n["material"] == "vinil") or p["id"].endswith("TRAKA")) for p in n["placements"]]))
+    return res
+
+
+class NestingSaveIn(BaseModel):
+    material: str
+    layout: Optional[dict] = None     # {id: {rot_deg, dx, dy}}; None = obriši ručni raspored (natrag na automatski)
+
+
+@router.post("/jobs/{job_id}/nesting")
+def save_nesting(job_id: int, body: NestingSaveIn, session: Session = Depends(db.get_session)):
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(404, "posao ne postoji")
+    saved = dict(job.nesting or {})
+    if body.layout is None:
+        saved.pop(body.material, None)
+    else:
+        saved[body.material] = {k: dict(rot_deg=int(v["rot_deg"]) % 360, dx=round(float(v["dx"]), 1), dy=round(float(v["dy"]), 1)) for k, v in body.layout.items()}
+    job.nesting = saved or None
+    session.add(job)
+    session.commit()
+    return {"ok": True, "materials": sorted(saved)}
+
+
 # --------------------------------------------------------------------------- izvoz
 @router.post("/jobs/{job_id}/export")
 def export_job(job_id: int, page: str = "", discount: float = 0.0, session: Session = Depends(db.get_session)):
@@ -566,28 +676,17 @@ def export_job(job_id: int, page: str = "", discount: float = 0.0, session: Sess
     kroj_out.write_dxf(kroj_elems, str(out / "kroj_1_1.dxf"))
     kroj_out.write_pdf(kroj_elems, str(out / f"kroj_1_1_{page}.pdf"), page=page)
     mat = [dict(element=k["layer"], **k["kroj"]["bom"]) for k in kroj_elems]
-    # ---- nesting po materijalu: lice, dno, traka svakog elementa na rolu
+    # ---- nesting po materijalu: lice, dno, traka svakog elementa na rolu (ručni raspored ako je spremljen)
     role, nest_names = [], []
-    for material in sorted({k["kroj"]["material"] for k in kroj_elems}):
-        items = []
-        for k in kroj_elems:
-            if k["kroj"]["material"] != material:
-                continue
-            free = material == "vinil"
-            for part in k["kroj"]["parts"]:
-                if part["name"] in ("LICE", "DNO", "TRAKA"):
-                    items.append(dict(id=f"{k['layer']} {part['name']}", poly=part["poly"], rot_free=free, kind=part["name"]))
-        width = float(rules["roll_width_mm"].get(material, 1370))
-        try:
-            placements, length = NEST.nest(items, width, float(rules.get("gap_mm", 15)))
-        except ValueError as ex:
-            role.append(dict(material=material, roll_width_mm=width, error=str(ex)))
+    for n in nesting_for_job(kroj_elems, rules, job.nesting):
+        if n.get("error"):
+            role.append(dict(material=n["material"], roll_width_mm=n["roll_width_mm"], error=n["error"]))
             continue
-        base = out / f"nesting_{material}"
-        kroj_out.write_nesting(placements, material, width, length, str(base))
-        nest_names += [f"nesting_{material}.pdf", f"nesting_{material}.dxf"]
-        role.append(dict(material=material, roll_width_mm=width, length_m=round(length / 1000, 2),
-                         utilization_pct=round(100 * NEST.utilization(placements, width, length), 1), n_parts=len(placements)))
+        base = out / f"nesting_{n['material']}"
+        kroj_out.write_nesting(n["placements"], n["material"], n["roll_width_mm"], n["length_mm"], str(base))
+        nest_names += [f"nesting_{n['material']}.pdf", f"nesting_{n['material']}.dxf"]
+        role.append(dict(material=n["material"], roll_width_mm=n["roll_width_mm"], length_m=round(n["length_mm"] / 1000, 2),
+                         utilization_pct=n["utilization_pct"], n_parts=len(n["placements"]), manual=n["manual"]))
     (out / "materijal.csv").write_text(
         "element;materijal;tkanina_m2;rola_mm;traka_visina_mm;traka_duljina_mm;spuzva_m2;spuzva_debljina_mm;zareza\n"
         + "".join(f"{m['element']};{m['material']};{m['fabric_m2']};{m['roll_width_mm']};{m['strip_height_mm']};{m['strip_length_mm']};{m['foam_m2']};{m['foam_thickness_mm']};{m['n_notches']}\n" for m in mat)

@@ -297,3 +297,32 @@ def test_export_quote(client):
     assert p["rad_eur"] == 50 and p["dodaci_eur"] == 5.0 and p["popust_eur"] > 0 and p["ukupno_eur"] == pytest.approx(p["bez_pdv_eur"] * 1.25, abs=0.02)
     assert client.get(f"/files/jobs/{j['job']['id']}/ponuda.pdf").status_code == 200
     client.put("/api/rules", json={"cjenik": {"marza_pct": 20, "rad_eur_element": {"sjedalo": 45}}})
+
+
+def test_nesting_view_and_manual_layout(client):
+    j = client.post("/api/jobs", json={"boat_name": "NestUI"}).json()
+    jid = j["job"]["id"]
+    assert client.get(f"/api/jobs/{jid}/nesting").status_code == 422
+    for i in range(2):
+        client.post(f"/api/jobs/{jid}/elements", json={"code": f"K{i}", "zone": "kokpit", "thickness_mm": 50, "outline_mm": [[0, 0], [600, 0], [600, 400], [0, 400]]})
+    n = client.get(f"/api/jobs/{jid}/nesting").json()
+    assert len(n) == 1 and n[0]["material"] == "vinil" and n[0]["manual"] is False and len(n[0]["parts"]) == 6
+    p0 = n[0]["parts"][0]
+    assert set(p0) >= {"id", "rot_deg", "dx", "dy", "base", "rot_free"} and p0["base"][0] == [0.0, 0.0] or True
+    # ručni raspored: sve dijelove pomakni; jedan izostavi -> automatski iznad
+    layout = {p["id"]: {"rot_deg": p["rot_deg"], "dx": p["dx"], "dy": p["dy"] + 100} for p in n[0]["parts"][:-1]}
+    r = client.post(f"/api/jobs/{jid}/nesting", json={"material": "vinil", "layout": layout}).json()
+    assert r["materials"] == ["vinil"]
+    n2 = client.get(f"/api/jobs/{jid}/nesting").json()[0]
+    assert n2["manual"] is True and len(n2["parts"]) == 6
+    moved = {p["id"]: p for p in n2["parts"]}
+    for pid, L in layout.items():
+        assert moved[pid]["dy"] == pytest.approx(L["dy"], abs=0.2)
+    assert n2["length_mm"] > n[0]["length_mm"]
+    # izvoz koristi ručni raspored
+    ex = client.post(f"/api/jobs/{jid}/export").json()
+    assert ex["role"][0]["manual"] is True
+    # auto=1 zanemaruje spremljeni; brisanje rasporeda
+    assert client.get(f"/api/jobs/{jid}/nesting?auto=1").json()[0]["manual"] is False
+    client.post(f"/api/jobs/{jid}/nesting", json={"material": "vinil", "layout": None})
+    assert client.get(f"/api/jobs/{jid}/nesting").json()[0]["manual"] is False

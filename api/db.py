@@ -48,7 +48,7 @@ def init():
 
 # stupci dodani nakon prve verzije: (tablica, stupac, SQL tip)
 MIGRATIONS = [("elements", "features", "JSON"), ("jobs", "created_by", "VARCHAR DEFAULT ''"), ("measurements", "created_by", "VARCHAR DEFAULT ''"),
-              ("elements", "template_outline_mm", "JSON"), ("elements", "template_from", "INTEGER")]
+              ("elements", "template_outline_mm", "JSON"), ("elements", "template_from", "INTEGER"), ("jobs", "nesting", "JSON")]
 
 
 def migrate():

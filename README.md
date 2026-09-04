@@ -10,7 +10,7 @@ krojeve. Ovo je prva metoda mjerenja iz [`PLAN.md`](PLAN.md) (metoda A); ostatak
 ```bash
 pip install -e ".[test]"          # ili: pip install opencv-python-headless numpy scipy scikit-image shapely ezdxf matplotlib
 python3 -m jastuk_cv fotke/elementi.json --out izlaz
-python3 -m pytest                  # 51 test, ~75 s (regresija na 4 fotografije, geometrija, markeri, kalibracija, dodaci, krojevi, nesting, ponuda, API)
+python3 -m pytest                  # 52 testa, ~75 s (regresija na 4 fotografije, geometrija, markeri, kalibracija, dodaci, krojevi, nesting, ponuda, API)
 python3 data/seed_boats.py         # provjera startnog popisa brodova
 ```
 
@@ -101,7 +101,9 @@ umjesto pomaknut od kamere. Ekran: ⚙ Pravila → Kalibracija kamere.
 **Nesting** (`jastuk_cv/nesting.py`): lice, dno i traka svih elemenata posla slažu se na rolu po
 materijalu (vinil: kokpit i paluba, rotacija slobodna; tkanina: ostalo, samo uzduž; trake uvijek
 uzduž role). Heuristika bottom-left po gabaritima; izlaz `nesting_<materijal>.dxf` (1:1 s rolom)
-i `.pdf` (pregled), potrebna duljina role i iskoristivost u izvozu i u `materijal.csv`.
+i `.pdf` (pregled), potrebna duljina role i iskoristivost u izvozu i u `materijal.csv`. Na ekranu
+**Raspored na roli** (s posla) komadi se pomiču prstom i zakreću, sukobi su crveni, raspored se sprema
+uz posao i izvoz ga tada koristi umjesto automatskog.
 
 **Prijava**: dva (ili više) korisnika s punim pravima, `python3 tools/users.py add <ime>`. Bez
 korisnika poslužitelj stvori `radionica` / `jastuk` i upozori u logu; promijeni lozinku. Token vrijedi

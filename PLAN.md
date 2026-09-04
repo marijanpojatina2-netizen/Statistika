@@ -405,7 +405,7 @@ Akcije:
 - [ ] Trake: rezanje trake na dijelove po uglovima (sada je jedan komad s zarezima); traka s cifom kao
       dvije polovice (sada samo označeno).
 - [x] Nesting v1 (skyline po gabaritima, rotacije po materijalu), DXF/PDF, duljina role u izvozu.
-- [ ] Prikaz nestinga u aplikaciji i ručno pomicanje komada prstom.
+- [x] Prikaz nestinga u aplikaciji i ručno pomicanje komada prstom, spremanje uz posao.
 - [x] PDF 1:1 s tilingom na A4/A3 (preklop 10 mm, križići, kontrolni kvadrat 100 mm na svakoj stranici,
       uputa na naslovnoj). Lice i spužva po stranicama, dno = zrcalno lice, traka po tablici zareza.
 - [x] Popis materijala (`materijal.csv`). Cjenik i ponuda (`ponuda.pdf`, marža, popust, PDV): gotovo.
@@ -605,8 +605,9 @@ Još bi dobro došlo, ali ne blokira: s kojeg su broda uzorci u `fotke/` i koji 
 9. ~~Nesting na rolu, prijava dva korisnika, offline red.~~ Gotovo.
 10. ~~Predlošci po modelu broda, kalibracija kamere, korekcija ruba ispod ravnine markera.~~ Gotovo
     u kodu; kalibracija čeka fotografije šahovnice.
-11. ~~Ponuda iz popisa materijala s cjenikom.~~ Gotovo. Sljedeće: pilot na stvarnim brodovima (treba
-    fotografije), prikaz nestinga u aplikaciji s pomicanjem komada.
+11. ~~Ponuda iz popisa materijala s cjenikom.~~ Gotovo.
+12. ~~Prikaz nestinga u aplikaciji s pomicanjem komada prstom.~~ Gotovo. Sljedeće: pilot na stvarnim
+    brodovima (treba fotografije i tablet u radionici).
 7. ~~Faza 3, metoda B: markeri, PDF za tisak, mjerenje jednim dodirom, ručna korekcija konture.~~
    Gotovo u kodu i na sintetičkoj sceni. Sljedeće: ispiši `markeri/aruco_5x5_80mm_a4.pdf`, slikaj
    S25 Ultrom nekoliko jastuka i ležajeva s markerima i pošalji fotografije; na njima se podešava

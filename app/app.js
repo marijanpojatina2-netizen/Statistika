@@ -201,6 +201,7 @@ const routes = [
   [/^#\/nacrt\/(\d+)$/, drawingView],
   [/^#\/pravila$/, rulesView],
   [/^#\/kalibracija$/, calibView],
+  [/^#\/nesting\/(\d+)$/, nestingView],
 ];
 async function route() {
   const h = location.hash || "#/";
@@ -315,7 +316,8 @@ async function jobView(id) {
         <div class="card"><h2 style="margin-top:0">Izvoz</h2>
           <p class="muted small">Krojevi (lice, dno, traka, spužva sa šavom i zarezima) kao DXF i PDF 1:1 slijepljen iz stranica, popis materijala, obrisi s dodacima.</p>
           <div class="row"><select id="page" style="width:auto"><option value="A4">PDF 1:1 na A4</option><option value="A3">PDF 1:1 na A3</option></select><label style="margin:0">popust % <input id="disc" type="number" value="0" style="width:70px;padding:6px"></label><button id="exp" class="primary">Generiraj krojeve i ponudu</button></div>
-          <div class="files" id="files"></div></div>
+          <div class="files" id="files"></div>
+          <p><a class="btn" href="#/nesting/${id}">🧩 Raspored na roli (nesting)</a> <span class="muted small">pomicanje komada prstom, sprema se uz posao</span></p></div>
         <div class="card"><button class="danger" id="del">Obriši posao</button></div>
       </div>
     </div>`;
@@ -1013,4 +1015,112 @@ async function calibView() {
       calibView();
     } catch (e) { $("#cst").textContent = ""; toast(e.message, 8000); }
   };
+}
+
+
+// ------------------------------------------------------------------ nesting: raspored na roli, pomicanje prstom
+function rotPoly(base, deg) {
+  const a = deg * Math.PI / 180, c = Math.cos(a), si = Math.sin(a);
+  const q = base.map(([x, y]) => [x * c - y * si, x * si + y * c]);
+  const mx = Math.min(...q.map(p => p[0])), my = Math.min(...q.map(p => p[1]));
+  return q.map(([x, y]) => [x - mx, y - my]);
+}
+function bboxOverlap(a, b, gap) { return !(a[2] + gap <= b[0] || b[2] + gap <= a[0] || a[3] + gap <= b[1] || b[3] + gap <= a[1]); }
+
+async function nestingView(jobId) {
+  let data;
+  try { data = await api(`/jobs/${jobId}/nesting`); } catch (e) { view.innerHTML = `<div class="card">${esc(e.message)}</div><a class="btn" href="#/posao/${jobId}">Natrag</a>`; return; }
+  crumb.textContent = `posao ${jobId} › nesting`;
+  let mi = 0;
+  view.innerHTML = `
+    <div class="row"><h1 class="grow">Raspored na roli</h1><a class="btn" href="#/posao/${jobId}">Natrag</a></div>
+    <div class="card">
+      <div class="row" id="mats">${data.map((m, i) => `<button data-m="${i}" class="${i === 0 ? "on" : ""}">${m.material} · rola ${m.roll_width_mm} mm</button>`).join("")}</div>
+      <p class="small" id="info"></p>
+      <div class="canvas-wrap"><canvas id="nc" class="sketch" style="background:#fff"></canvas></div>
+      <div class="tools">
+        <button id="rot">↻ Zakreni 90°</button><button id="auto">⟲ Automatski</button><button id="zin">🔍+</button><button id="zout">🔍−</button><button id="zfit">⤢</button>
+        <button class="primary" id="save">Spremi raspored</button><button id="reset">Obriši ručni raspored</button>
+      </div>
+      <p class="muted small">Povuci komad prstom; dodirni ga pa "Zakreni". Crveno = preklapanje ili izvan role. Trake i vinil smiju rotirati; tkanina samo uzduž (180°).</p>
+    </div>`;
+  const canvas = $("#nc"), ctx = canvas.getContext("2d"), dpr = window.devicePixelRatio || 1;
+  let W = 0, H = 0, vs = 1, vx = 0, vy = 0, sel = null, parts = [], M = null;
+  const toS = ([x, y]) => [x * vs + vx, y * vs + vy];
+  const toW = ev => { const r = canvas.getBoundingClientRect(); return [(ev.clientX - r.left - vx) / vs, (ev.clientY - r.top - vy) / vs]; };
+  const placed = p => rotPoly(p.base, p.rot_deg).map(([x, y]) => [x + p.dx, y + p.dy]);
+  const bb = poly => bbox(poly);
+  const rollLen = () => Math.max(0, ...parts.map(p => bb(placed(p))[3])) + M.gap_mm / 2;
+  function load(i) {
+    mi = i; M = data[i];
+    parts = (M.parts || []).map(p => ({ ...p }));
+    $("#mats").querySelectorAll("button").forEach(b => b.classList.toggle("on", +b.dataset.m === i));
+    sel = null; fit(); draw();
+  }
+  function fit() {
+    W = canvas.parentElement.clientWidth; H = Math.round(window.innerHeight * 0.66);
+    canvas.style.width = W + "px"; canvas.style.height = H + "px"; canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    const L = Math.max(rollLen(), 500);
+    vs = Math.min((W - 30) / M.roll_width_mm, (H - 30) / L); vx = 15; vy = 15;
+  }
+  function problems() {
+    const bad = new Set(); const bbs = parts.map(p => bb(placed(p)));
+    bbs.forEach((b, i) => { if (b[0] < -0.5 || b[2] > M.roll_width_mm + 0.5 || b[1] < -0.5) bad.add(i);
+      for (let j = i + 1; j < bbs.length; j++) if (bboxOverlap(b, bbs[j], M.gap_mm * 0.5)) { bad.add(i); bad.add(j); } });
+    return bad;
+  }
+  function draw() {
+    if (M.error) { ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H); $("#info").textContent = "⚠️ " + M.error; return; }
+    const bad = problems(), L = rollLen();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    const a = toS([0, 0]), b = toS([M.roll_width_mm, L]);
+    ctx.fillStyle = "#f4efe6"; ctx.fillRect(a[0], a[1], b[0] - a[0], b[1] - a[1]); ctx.strokeStyle = "#8a98a5"; ctx.lineWidth = 1; ctx.strokeRect(a[0], a[1], b[0] - a[0], b[1] - a[1]);
+    ctx.strokeStyle = "#e8dcc8"; for (let y = 0; y <= L; y += 500) { const s0 = toS([0, y]), s1 = toS([M.roll_width_mm, y]); ctx.beginPath(); ctx.moveTo(s0[0], s0[1]); ctx.lineTo(s1[0], s1[1]); ctx.stroke(); }
+    parts.forEach((p, i) => {
+      const q = placed(p); ctx.beginPath(); q.forEach((pt, k) => { const s0 = toS(pt); k ? ctx.lineTo(s0[0], s0[1]) : ctx.moveTo(s0[0], s0[1]); }); ctx.closePath();
+      ctx.fillStyle = bad.has(i) ? "rgba(192,57,43,.35)" : i === sel ? "rgba(244,185,66,.55)" : "rgba(31,119,180,.3)"; ctx.fill();
+      ctx.strokeStyle = bad.has(i) ? "#c0392b" : i === sel ? "#d9822b" : "#1f5fbf"; ctx.lineWidth = i === sel ? 2.5 : 1.2; ctx.stroke();
+      const c = bb(q); ctx.fillStyle = "#16232e"; ctx.font = `${Math.max(9, Math.min(13, (c[2] - c[0]) * vs / 10))}px system-ui`; ctx.textAlign = "center";
+      const lines = wrapText(ctx, p.id, Math.max(30, (c[2] - c[0]) * vs - 4)); const s0 = toS([(c[0] + c[2]) / 2, (c[1] + c[3]) / 2]);
+      lines.forEach((t, k) => ctx.fillText(t, s0[0], s0[1] + (k - (lines.length - 1) / 2) * 12 + 4));
+    });
+    let area = 0; parts.forEach(p => { const q = placed(p); let s2 = 0; for (let i = 0; i < q.length; i++) { const u = q[i], v = q[(i + 1) % q.length]; s2 += u[0] * v[1] - v[0] * u[1]; } area += Math.abs(s2) / 2; });
+    $("#info").innerHTML = `${M.material}: rola ${M.roll_width_mm} mm × <b>${(L / 1000).toFixed(2)} m</b> · ${parts.length} komada · iskoristivost ${Math.round(100 * area / (M.roll_width_mm * L))} % · ${M.manual ? "ručni raspored" : "automatski raspored"}${bad.size ? ` · <b style="color:var(--bad)">${bad.size} komada u sukobu</b>` : " · ✓ bez preklapanja"}`;
+  }
+  // događaji: povlačenje komada, pan, pinch
+  const pointers = new Map(); let pinch = null, drag = null, pan = null;
+  canvas.onpointerdown = ev => {
+    canvas.setPointerCapture(ev.pointerId); pointers.set(ev.pointerId, [ev.clientX, ev.clientY]);
+    if (pointers.size === 2) { const [a, c] = [...pointers.values()]; pinch = { d: Math.hypot(a[0] - c[0], a[1] - c[1]), vs, vx, vy, cx: (a[0] + c[0]) / 2, cy: (a[1] + c[1]) / 2 }; drag = null; pan = null; return; }
+    const w = toW(ev);
+    let hit = null;
+    for (let i = parts.length - 1; i >= 0; i--) if (inPoly(w, placed(parts[i]))) { hit = i; break; }
+    if (hit !== null) { sel = hit; drag = { i: hit, ox: w[0] - parts[hit].dx, oy: w[1] - parts[hit].dy }; }
+    else { sel = null; pan = { x: ev.clientX, y: ev.clientY, vx, vy }; }
+    draw();
+  };
+  canvas.onpointermove = ev => {
+    if (!pointers.has(ev.pointerId)) return; pointers.set(ev.pointerId, [ev.clientX, ev.clientY]);
+    if (pinch && pointers.size === 2) { const [a, c] = [...pointers.values()]; const dd = Math.hypot(a[0] - c[0], a[1] - c[1]); const r = canvas.getBoundingClientRect();
+      const cx = (a[0] + c[0]) / 2 - r.left, cy = (a[1] + c[1]) / 2 - r.top, k = Math.max(0.2, Math.min(10, pinch.vs * dd / pinch.d)) / pinch.vs;
+      vs = pinch.vs * k; vx = cx - (pinch.cx - r.left - pinch.vx) * k; vy = cy - (pinch.cy - r.top - pinch.vy) * k; draw(); return; }
+    const w = toW(ev);
+    if (drag) { const p = parts[drag.i]; p.dx = Math.round(Math.max(0, w[0] - drag.ox)); p.dy = Math.round(Math.max(0, w[1] - drag.oy)); M.manual = true; draw(); }
+    else if (pan) { vx = pan.vx + ev.clientX - pan.x; vy = pan.vy + ev.clientY - pan.y; draw(); }
+  };
+  canvas.onpointerup = canvas.onpointercancel = ev => { pointers.delete(ev.pointerId); if (pointers.size < 2) pinch = null; drag = null; pan = null; };
+  $("#mats").querySelectorAll("button").forEach(b => b.onclick = () => load(+b.dataset.m));
+  $("#rot").onclick = () => { if (sel === null) { toast("Dodirni komad"); return; } const p = parts[sel]; p.rot_deg = (p.rot_deg + (p.rot_free ? 90 : 180)) % 360; M.manual = true; draw(); };
+  $("#auto").onclick = async () => { data = await api(`/jobs/${jobId}/nesting?auto=1`); load(mi); };
+  $("#save").onclick = async () => {
+    const layout = Object.fromEntries(parts.map(p => [p.id, { rot_deg: p.rot_deg, dx: p.dx, dy: p.dy }]));
+    await api(`/jobs/${jobId}/nesting`, { method: "POST", body: { material: M.material, layout } });
+    toast(`Raspored za ${M.material} spremljen; izvoz ga koristi`); M.manual = true; draw();
+  };
+  $("#reset").onclick = async () => { await api(`/jobs/${jobId}/nesting`, { method: "POST", body: { material: M.material, layout: null } }); data = await api(`/jobs/${jobId}/nesting`); load(mi); toast("Vraćeno na automatski raspored"); };
+  const zoomAt = k => { vx = W / 2 - (W / 2 - vx) * k; vy = H / 2 - (H / 2 - vy) * k; vs *= k; draw(); };
+  $("#zin").onclick = () => zoomAt(1.5); $("#zout").onclick = () => zoomAt(1 / 1.5); $("#zfit").onclick = () => { fit(); draw(); };
+  load(0);
+  window.onresize = () => { fit(); draw(); };
+  window.__nest = { parts: () => parts, toS: p => toS(p), placed };
 }
