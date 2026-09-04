@@ -210,3 +210,75 @@ def test_export_has_nesting(client):
     assert role["vinil"]["n_parts"] == 6 and role["vinil"]["length_m"] > 2.5 and role["tkanina"]["n_parts"] == 3
     csv = client.get(f"/files/jobs/{j['job']['id']}/materijal.csv").text
     assert "rola;vinil;1370" in csv
+
+
+def test_templates_by_boat_model(client):
+    boat = client.get("/api/boats?q=lagoon 42").json()[0]
+    j1 = client.post("/api/jobs", json={"boat_model_id": boat["id"], "boat_name": "Prvi"}).json()["job"]
+    e1 = client.post(f"/api/jobs/{j1['id']}/elements", json={"code": "KOKPIT L", "zone": "kokpit", "thickness_mm": 60, "sketch": [[0.3, 0.7], [0.45, 0.7], [0.45, 0.9], [0.3, 0.9]],
+                     "outline_mm": [[0, 0], [1000, 0], [1000, 500], [0, 500]], "features": [{"type": "zip", "s0": 50, "s1": 950}]}).json()
+    client.post(f"/api/jobs/{j1['id']}/elements", json={"code": "KOKPIT D", "zone": "kokpit"})
+    t = client.get(f"/api/boats/{boat['id']}/templates").json()
+    assert t and t[0]["job_id"] == j1["id"] and t[0]["n_elements"] == 2 and t[0]["n_measured"] == 1
+    # drugi brod istog modela: preuzmi elemente
+    j2 = client.post("/api/jobs", json={"boat_model_id": boat["id"], "boat_name": "Drugi"}).json()["job"]
+    r = client.post(f"/api/jobs/{j2['id']}/copy_elements", json={"from_job_id": j1["id"]}).json()
+    assert r["copied"] == 2
+    els = client.get(f"/api/jobs/{j2['id']}").json()["elements"]
+    a = next(e for e in els if e["code"] == "KOKPIT L")
+    assert a["status"] == "nacrtan" and a["outline_mm"] is None and len(a["template_outline_mm"]) == 4
+    assert a["sketch"] == e1["sketch"] and a["features"][0]["type"] == "zip" and a["thickness_mm"] == 60 and a["template_from"] == e1["id"]
+    # ponovno kopiranje ne duplicira
+    assert client.post(f"/api/jobs/{j2['id']}/copy_elements", json={"from_job_id": j1["id"]}).json()["copied"] == 0
+    # preuzmi obris predloška bez mjerenja
+    u = client.post(f"/api/elements/{a['id']}/use_template").json()
+    assert u["status"] == "potvrđen" and u["method"] == "template" and len(u["outline_mm"]) == 4
+    # odstupanje izmjerenog od predloška: 30 mm dulji obris -> upozorenje
+    b = next(e for e in els if e["code"] == "KOKPIT D")
+    assert client.post(f"/api/elements/{b['id']}/use_template").status_code == 404
+    client.patch(f"/api/elements/{a['id']}", json={"outline_mm": [[0, 0], [1030, 0], [1030, 500], [0, 500]]})
+    d = client.get(f"/api/elements/{a['id']}").json()["template_deviation"]
+    assert d["warn"] is True and d["max_mm"] >= 14 and d["size_diff_mm"][1] == pytest.approx(30, abs=0.5)
+    client.patch(f"/api/elements/{a['id']}", json={"outline_mm": [[0, 0], [1002, 0], [1002, 500], [0, 500]]})
+    d = client.get(f"/api/elements/{a['id']}").json()["template_deviation"]
+    assert d["warn"] is False and d["max_mm"] < 3
+    # različit model -> 422
+    other = client.get("/api/boats?q=bavaria 46").json()[0]
+    j3 = client.post("/api/jobs", json={"boat_model_id": other["id"]}).json()["job"]
+    assert client.post(f"/api/jobs/{j3['id']}/copy_elements", json={"from_job_id": j1["id"]}).status_code == 422
+
+
+def test_calibration_api_and_edge_drop(client, tmp_path):
+    import cv2
+    from test_calib import synth_photo, rot
+    K = np.array([[1400.0, 0, 800], [0, 1400.0, 600], [0, 0, 1]])
+    rng = np.random.default_rng(2)
+    files = []
+    for i in range(8):
+        img = synth_photo(K, rot(*(rng.uniform(-0.4, 0.4, 3))), np.array([rng.uniform(-60, -20), rng.uniform(-60, -20), rng.uniform(600, 900)]))
+        f = tmp_path / f"sah{i}.jpg"
+        cv2.imwrite(str(f), img, [cv2.IMWRITE_JPEG_QUALITY, 95])
+        files.append(("files", (f.name, open(f, "rb"), "image/jpeg")))
+    r = client.post("/api/calib?key=test-kamera", files=files)
+    assert r.status_code == 200, r.text
+    c = r.json()
+    assert c["key"] == "test-kamera" and c["n_images"] >= 6 and abs(c["K"][0][0] - 1400) < 40
+    assert any(x["key"] == "test-kamera" for x in client.get("/api/calib").json())
+    assert client.post("/api/calib?key=x", files=files[:2]).status_code == 422
+    # mjerenje markerima: bez kalibracije korekcija ruba -> 422; s ključem -> prolazi i bilježi
+    from synth_scene import make_scene
+    photo, truth, seed_px, Hp, S = make_scene(seed=4, out_px=(1600, 1200))
+    f = tmp_path / "m.jpg"; cv2.imwrite(str(f), photo, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    j = client.post("/api/jobs", json={"boat_name": "Kal"}).json()
+    el = client.post(f"/api/jobs/{j['job']['id']}/elements", json={"code": "X"}).json()
+    with open(f, "rb") as fh:
+        ph = client.post("/api/photos", files={"file": ("m.jpg", fh, "image/jpeg")}).json()
+    assert ph["device_key"] is None and ph["calibrated"] is False
+    r = client.post(f"/api/elements/{el['id']}/measure_markers", json={"photo_id": ph["photo_id"], "seed_px": list(seed_px), "edge_drop_mm": 20})
+    assert r.status_code == 422 and "kalibraciju" in r.json()["detail"]
+    r0 = client.post(f"/api/elements/{el['id']}/measure_markers", json={"photo_id": ph["photo_id"], "seed_px": list(seed_px)}).json()
+    r1 = client.post(f"/api/elements/{el['id']}/measure_markers", json={"photo_id": ph["photo_id"], "seed_px": list(seed_px), "edge_drop_mm": 20, "calib_key": "test-kamera"})
+    assert r1.status_code == 200, r1.text
+    q = r1.json()["quality"]
+    assert q["calibrated"] is True and q["edge_drop_mm"] == 20 and q["n_markers"] >= 5
+    assert abs(r1.json()["perimeter_mm"] - r0["perimeter_mm"]) < 150       # korekcija je reda mm-cm, ne ruši mjerenje

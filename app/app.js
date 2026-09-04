@@ -200,6 +200,7 @@ const routes = [
   [/^#\/mjeri\/(\d+)$/, measureView],
   [/^#\/nacrt\/(\d+)$/, drawingView],
   [/^#\/pravila$/, rulesView],
+  [/^#\/kalibracija$/, calibView],
 ];
 async function route() {
   const h = location.hash || "#/";
@@ -242,6 +243,7 @@ async function newJobView() {
       <input id="q" placeholder="npr. Bavaria 46, Lagoon 42" autocomplete="off">
       <div id="boats" class="list" style="margin-top:8px"></div>
       <div id="picked" class="hint" hidden></div>
+      <div id="tpl" class="card" style="margin-top:8px;background:#f7fafc" hidden></div>
       <details style="margin-top:8px"><summary class="muted small">Modela nema na popisu? Dodaj novi</summary>
         <div class="row" style="margin-top:8px">
           <div class="grow"><label>Proizvođač</label><input id="nb_builder"></div>
@@ -259,18 +261,24 @@ async function newJobView() {
       <label style="margin-top:8px">Napomena</label><textarea id="notes" rows="2"></textarea>
     </div>
     <div class="row"><button class="primary" id="save">Otvori posao</button><a class="btn" href="#/">Odustani</a></div>`;
-  let picked = null;
+  let picked = null, templates = [];
   const list = $("#boats");
   async function search() {
     const boats = await api("/boats?q=" + encodeURIComponent($("#q").value));
     list.innerHTML = boats.slice(0, 12).map(b => `<a class="item" href="#" data-id="${b.id}">
       <div class="grow"><div class="t">${esc(b.builder)} ${esc(b.model)}${b.priority ? ' <span class="chip" style="background:var(--accent);color:#16232e">prioritet</span>' : ""}</div>
       <div class="s">${esc(b.type)} · ${b.loa_m} m × ${b.beam_m} m · ${b.year_from}–${b.year_to || ""} · kabine ${esc(b.cabins)}</div></div></a>`).join("");
-    list.querySelectorAll("a").forEach(a => a.onclick = ev => {
+    list.querySelectorAll("a").forEach(a => a.onclick = async ev => {
       ev.preventDefault();
       picked = boats.find(b => b.id === +a.dataset.id);
       $("#picked").hidden = false; $("#picked").textContent = "Odabrano: " + boatLabel(picked);
       list.innerHTML = "";
+      templates = await api(`/boats/${picked.id}/templates`).catch(() => []);
+      $("#tpl").hidden = !templates.length;
+      $("#tpl").innerHTML = templates.length ? `<label>Predložak: preuzmi elemente iz ranijeg posla istog modela</label>
+        <select id="tplsel"><option value="">— bez predloška —</option>${templates.map(t => `<option value="${t.job_id}">${esc(t.boat_name || "posao " + t.job_id)} · ${esc(t.customer)} · ${t.n_elements} el. (${t.n_measured} izmjereno) · ${String(t.created_at).slice(0, 10)}</option>`).join("")}</select>
+        <p class="muted small">Preuzimaju se šifre, zone, skice, debljine i dodaci. Obrisi iz predloška služe za usporedbu; na svakom elementu možeš ih i preuzeti bez mjerenja.</p>` : "";
+      if (templates.length) $("#tplsel").value = String(templates[0].job_id);
     });
   }
   $("#q").oninput = search; search();
@@ -280,6 +288,8 @@ async function newJobView() {
   };
   $("#save").onclick = async () => {
     const r = await api("/jobs", { method: "POST", body: { boat_model_id: picked?.id, boat_name: $("#boat_name").value, customer: $("#customer").value, marina: $("#marina").value, notes: $("#notes").value } });
+    const from = $("#tplsel") && $("#tplsel").value;
+    if (from) { const c = await api(`/jobs/${r.job.id}/copy_elements`, { method: "POST", body: { from_job_id: +from } }); toast(`Preuzeto ${c.copied} elemenata iz predloška`); }
     location.hash = "#/posao/" + r.job.id;
   };
 }
@@ -316,7 +326,7 @@ async function jobView(id) {
     $("#els").innerHTML = visible().map(e => {
       const b = e.outline_mm ? bbox(e.outline_mm) : null;
       return `<tr><td><b>${esc(e.code || "?")}</b><br><span class="muted small">${esc(e.zone)} · ${esc(e.kind)} · ${e.thickness_mm} mm</span></td>
-        <td><span class="chip ${e.status}">${e.status}</span>${b ? `<br><span class="small">${Math.round(b[2] - b[0])} × ${Math.round(b[3] - b[1])} mm</span>` : ""}</td>
+        <td><span class="chip ${e.status}">${e.status}</span>${b ? `<br><span class="small">${Math.round(b[2] - b[0])} × ${Math.round(b[3] - b[1])} mm</span>` : e.template_outline_mm ? `<br><span class="small muted">predložak ${Math.round(bbox(e.template_outline_mm)[2] - bbox(e.template_outline_mm)[0])} × ${Math.round(bbox(e.template_outline_mm)[3] - bbox(e.template_outline_mm)[1])} mm</span>` : ""}</td>
         <td style="white-space:nowrap"><a class="btn" href="#/element/${e.id}">Uredi</a> <a class="btn accent" href="#/mjeri/${e.id}">Mjeri</a>${e.outline_mm ? ` <a class="btn" href="#/nacrt/${e.id}">Nacrt${e.features && e.features.length ? ` (${e.features.length})` : ""}</a>` : ""}</td></tr>`;
     }).join("") || `<tr><td class="muted">Nema elemenata. Dodaj prvi s "+ Element" i nacrtaj ga prstom.</td></tr>`;
   }
@@ -376,6 +386,9 @@ async function elementView(id) {
         <label style="margin-top:8px">Napomena</label><textarea id="notes" rows="2">${esc(e.notes)}</textarea>
         <p class="small">Status: <span class="chip ${e.status}">${e.status}</span>
           ${e.outline_mm ? ` · obris ${Math.round(bbox(e.outline_mm)[2] - bbox(e.outline_mm)[0])} × ${Math.round(bbox(e.outline_mm)[3] - bbox(e.outline_mm)[1])} mm (${esc(e.method)})` : " · obris još nije izmjeren"}</p>
+        ${e.template_outline_mm ? `<div class="hint small">Predložak modela: ${Math.round(bbox(e.template_outline_mm)[2] - bbox(e.template_outline_mm)[0])} × ${Math.round(bbox(e.template_outline_mm)[3] - bbox(e.template_outline_mm)[1])} mm.
+          ${d.template_deviation ? (d.template_deviation.warn ? `<b style="color:var(--bad)">⚠️ Izmjereno odstupa od predloška: rub do ${d.template_deviation.max_mm} mm, gabarit ${d.template_deviation.size_diff_mm.join(" / ")} mm.</b> Provjeri je li to isti element i ista varijanta broda.` : `✓ Izmjereno se slaže s predloškom (rub do ${d.template_deviation.max_mm} mm).`) : ""}
+          ${!e.outline_mm ? `<br><button id="usetpl" style="margin-top:6px">Preuzmi obris predloška bez mjerenja</button>` : ""}</div>` : ""}
         <div class="tools">
           <button class="primary" id="save">Spremi</button>
           <button id="savemirror" title="sprema ovaj element i stvara zrcalnu kopiju (LIJEVA↔DESNA)">Spremi + zrcalna kopija</button>
@@ -412,6 +425,7 @@ async function elementView(id) {
     toast("Spremljeno + zrcalna kopija " + m.code); location.hash = "#/posao/" + e.job_id;
   };
   $("#del").onclick = async () => { if (confirm("Obrisati element?")) { await api(`/elements/${e.id}`, { method: "DELETE" }); location.hash = "#/posao/" + e.job_id; } };
+  if ($("#usetpl")) $("#usetpl").onclick = async () => { await api(`/elements/${e.id}`, { method: "PATCH", body: form() }); await api(`/elements/${e.id}/use_template`, { method: "POST" }); toast("Obris predloška preuzet"); location.hash = "#/nacrt/" + e.id; };
   window.onresize = () => { sc.refit(); render(); };
 }
 
@@ -502,7 +516,9 @@ async function measureView(id) {
       <div class="row">
         <label class="btn primary">📷 Slikaj / odaberi fotografiju<input id="file" type="file" accept="image/*" capture="environment" hidden></label>
         <span id="up" class="muted small"></span>
-        <span id="opts" class="row small"><label style="margin:0">marker <input id="mk" type="number" value="80" style="width:70px;padding:6px"> mm</label></span>
+        <span id="opts" class="row small"><label style="margin:0">marker <input id="mk" type="number" value="80" style="width:70px;padding:6px"> mm</label>
+          <label style="margin:0" title="zaobljen rub ili keder: silueta ruba je niže od plohe na kojoj su markeri; traži kalibriranu kameru">rub ispod markera <input id="drop" type="number" value="0" style="width:70px;padding:6px"> mm</label>
+          <span id="calinfo" class="muted"></span></span>
       </div>
     </div>
     <div class="card" id="manual" hidden>
@@ -627,6 +643,7 @@ async function measureView(id) {
     try { photo = await api("/photos", { method: "POST", body: fd }); } catch (er) { toast(er.message); $("#up").textContent = ""; return; }
     img = new Image(); img.src = fileUrl(photo.preview_url); await img.decode();
     $("#up").textContent = `${photo.width} × ${photo.height} px`;
+    $("#calinfo").innerHTML = photo.calibrated ? `✓ kamera kalibrirana (${esc(photo.device_key)})` : `kamera nije kalibrirana${photo.device_key ? " (" + esc(photo.device_key) + ")" : ""} · <a href="#/kalibracija">kalibriraj</a>`;
     $("#work").hidden = false;
     startTaps();
   };
@@ -636,7 +653,7 @@ async function measureView(id) {
     $("#next").disabled = true; $("#hint").innerHTML = `<span class="spinner"></span> mjerim (markeri, ispravljanje, kontura)…`;
     try {
       result = method === "markers"
-        ? await api(`/elements/${e.id}/measure_markers`, { method: "POST", body: { photo_id: photo.photo_id, seed_px: pts[0], marker_mm: +$("#mk").value || 80 } })
+        ? await api(`/elements/${e.id}/measure_markers`, { method: "POST", body: { photo_id: photo.photo_id, seed_px: pts[0], marker_mm: +$("#mk").value || 80, edge_drop_mm: +$("#drop").value || 0 } })
         : await api(`/elements/${e.id}/measure`, { method: "POST", body: { photo_id: photo.photo_id, origin_px: pts[0], x_axis_px: pts[1], seed_px: pts[2], square_corner_cm: $("#sq").checked ? [0, 0] : null } });
     } catch (er) { toast(er.message, 8000); uiTaps(); return; }
     rectImg = new Image(); rectImg.src = fileUrl(result.rect_url); await rectImg.decode();
@@ -683,7 +700,7 @@ async function measureView(id) {
     let per = 0; for (let i = 0; i < poly.length; i++) { const a = poly[i], c = poly[(i + 1) % poly.length]; per += Math.hypot(a[0] - c[0], a[1] - c[1]); }
     const q = result.quality;
     $("#result").innerHTML = `<table><tr><th>gabarit</th><td>${Math.round(b[2] - b[0])} × ${Math.round(b[3] - b[1])} mm</td><th>opseg</th><td>${Math.round(per)} mm</td><th>točaka</th><td>${poly.length}</td></tr>
-      ${method === "markers" ? `<tr><th>markera</th><td>${q.n_markers} (${q.marker_ids.join(", ")})${q.dropped_ids && q.dropped_ids.length ? `<br><b style="color:var(--bad)">⚠️ izbačen M${q.dropped_ids.join(", M")}: nije u ravnini s ostalima</b>` : ""}</td><th>ostatak prilagodbe</th><td>${q.fit_rms_mm} mm ${q.fit_rms_mm > 1.5 ? "⚠️" : "✓"}</td><th>rezolucija</th><td>${q.mm_per_px} mm/px</td></tr>`
+      ${method === "markers" ? `<tr><th>markera</th><td>${q.n_markers} (${q.marker_ids.join(", ")})${q.dropped_ids && q.dropped_ids.length ? `<br><b style="color:var(--bad)">⚠️ izbačen M${q.dropped_ids.join(", M")}: nije u ravnini s ostalima</b>` : ""}</td><th>ostatak prilagodbe</th><td>${q.fit_rms_mm} mm ${q.fit_rms_mm > 1.5 ? "⚠️" : "✓"}</td><th>rezolucija</th><td>${q.mm_per_px} mm/px${q.edge_drop_mm ? ` · rub −${q.edge_drop_mm} mm korigiran` : ""}${q.calibrated ? " · kalibrirano" : ""}</td></tr>`
         : `<tr><th>čvorova mreže</th><td>${q.grid_nodes}</td><th>ostatak homografije</th><td>${q.homography_rms_px} px ${q.homography_rms_px > 3 ? "⚠️" : "✓"}</td><th>potez</th><td>${q.stroke_mm} mm</td></tr>`}</table>`;
   }
   const EH = { move: "Povuci točku da je pomakneš; povuci prazno mjesto da pomakneš sliku; dva prsta za zum.", add: "Dodirni konturu gdje želiš novu točku.",
@@ -744,8 +761,10 @@ async function measureView(id) {
   $("#redo").onclick = () => startTaps();
   $("#accept").onclick = async () => {
     if (poly.length < 3) { toast("kontura treba bar 3 točke"); return; }
-    await api(`/elements/${e.id}/accept`, { method: "POST", body: { measurement_id: result.measurement_id, outline_mm: poly.map(p => toMm(p).map(v => Math.round(v * 10) / 10)) } });
-    toast("Kontura prihvaćena. Sad dodaci: cif, kopče, rupe…"); location.hash = "#/nacrt/" + e.id;
+    const acc = await api(`/elements/${e.id}/accept`, { method: "POST", body: { measurement_id: result.measurement_id, outline_mm: poly.map(p => toMm(p).map(v => Math.round(v * 10) / 10)) } });
+    const dv = acc.template_deviation;
+    if (dv && dv.warn) { if (!confirm(`⚠️ Odstupanje od predloška modela: rub do ${dv.max_mm} mm, gabarit ${dv.size_diff_mm.join(" / ")} mm.\nJe li to sigurno isti element? (U redu = prihvati, Odustani = ostani ovdje)`)) return; }
+    toast(dv && !dv.warn ? "Kontura prihvaćena, slaže se s predloškom. Sad dodaci." : "Kontura prihvaćena. Sad dodaci: cif, kopče, rupe…"); location.hash = "#/nacrt/" + e.id;
   };
   window.onresize = () => { if (!photo) return; if (result) { fitView(); drawEdit(); } else { fitPhoto(); drawTaps(); } };
 }
@@ -942,6 +961,7 @@ async function rulesView() {
     <div class="card"><h2 style="margin-top:0">Role i ispis</h2>
       <div class="row">${num("r_vinil", "širina role vinil (mm)", r.roll_width_mm.vinil)}${num("r_tkanina", "širina role tkanina (mm)", r.roll_width_mm.tkanina)}${num("gap", "razmak komada (mm)", r.gap_mm)}
         <div class="grow"><label>PDF 1:1 na</label><select id="page"><option ${r.page === "A4" ? "selected" : ""}>A4</option><option ${r.page === "A3" ? "selected" : ""}>A3</option></select></div></div></div>
+    <div class="card"><h2 style="margin-top:0">Kamere</h2><p class="muted small">Kalibracija uklanja distorziju leće i omogućuje korekciju za rub ispod ravnine markera.</p><a class="btn" href="#/kalibracija">📷 Kalibracija kamere</a></div>
     <div class="tools"><button class="primary" id="save">Spremi</button></div>`;
   $("#save").onclick = async () => {
     const v = id => +$("#" + id).value;
@@ -950,5 +970,33 @@ async function rulesView() {
       cover_shrink_pct: { vinil: v("s_vinil"), tkanina: v("s_tkanina") }, roll_width_mm: { vinil: v("r_vinil"), tkanina: v("r_tkanina") },
       gap_mm: v("gap"), page: $("#page").value } });
     toast("Pravila spremljena"); location.hash = "#/";
+  };
+}
+
+
+// ------------------------------------------------------------------ kalibracija kamere
+async function calibView() {
+  crumb.textContent = "kalibracija kamere";
+  const list = await api("/calib");
+  view.innerHTML = `
+    <div class="row"><h1 class="grow">Kalibracija kamere</h1><a class="btn" href="#/pravila">Natrag</a></div>
+    <div class="card">
+      <p>Ispiši <b>markeri/kalibracija_sahovnica_a4.pdf</b> u stvarnoj veličini i zalijepi ravno na krutu ploču. Istim mobitelom i istom kamerom kojom mjeriš slikaj ploču <b>15–20 puta</b>: iz raznih kutova (do 40°), udaljenosti i položaja u kadru, uključujući rubove kadra. Zatim ovdje odaberi sve te fotografije odjednom.</p>
+      <div class="row"><label class="btn primary">📷 Odaberi fotografije šahovnice<input id="cf" type="file" accept="image/*" multiple hidden></label><span id="cst" class="muted small"></span></div>
+      <div id="cres"></div>
+    </div>
+    <div class="card"><h2 style="margin-top:0">Kalibrirani uređaji</h2><table><tbody id="cl">${list.map(c => `<tr><td>${esc(c.key)}</td><td class="small">${c.n_images} slika · RMS ${c.rms_px} px · ${c.image_size.join("×")}</td></tr>`).join("") || `<tr><td class="muted">Još nijedan.</td></tr>`}</tbody></table>
+      <p class="muted small">Uređaj se prepoznaje iz EXIF podataka fotografije (proizvođač, model, rezolucija). Kod mjerenja se kalibracija primjenjuje sama.</p></div>`;
+  $("#cf").onchange = async ev => {
+    const fs = [...ev.target.files]; if (!fs.length) return;
+    $("#cst").innerHTML = `<span class="spinner"></span> šaljem ${fs.length} fotografija i računam…`;
+    const fd = new FormData(); fs.forEach(f => fd.append("files", f));
+    try {
+      const r = await api("/calib", { method: "POST", body: fd });
+      $("#cst").textContent = "";
+      $("#cres").innerHTML = `<div class="hint">✓ Kalibrirano: <b>${esc(r.key)}</b> · ${r.n_images}/${fs.length} slika s prepoznatom šahovnicom · RMS ${r.rms_px.toFixed(3)} px ${r.rms_px > 1 ? "⚠️ (velik ostatak: ploča nije ravna ili su slike mutne)" : "✓"}<br>
+        f = ${Math.round(r.K[0][0])} / ${Math.round(r.K[1][1])} px, središte ${Math.round(r.K[0][2])}, ${Math.round(r.K[1][2])} · distorzija k1 ${r.dist[0].toFixed(4)}, k2 ${r.dist[1].toFixed(4)}</div>`;
+      calibView();
+    } catch (e) { $("#cst").textContent = ""; toast(e.message, 8000); }
   };
 }

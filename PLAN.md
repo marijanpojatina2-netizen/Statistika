@@ -300,8 +300,9 @@ Akcije:
 - [x] Modul `jastuk_cv/markers.py`: `fit_plane` (homografija iz svih markera bez kalibracije),
       `rectify_plane` (1 px = 1 mm), dorada uglova markera i ruba na 50 % prijelaza (nepristrano
       na zamućenje). Na sintetičkoj sceni: mjerilo 0,01 %, rub < 1 mm.
-- [ ] Kalibracija za tablet + mobitele; postupak da se doda novi uređaj (slikaj šahovnicu 15 puta,
-      aplikacija sama izračuna parametre). Prvi uređaj: **Samsung Galaxy S25 Ultra**. Za mjerenje se
+- [x] Kalibracija u aplikaciji (⚙ → Kalibracija kamere): 15–20 slika šahovnice, K i distorzija po
+      uređaju iz EXIF-a, primjena kod mjerenja. Korekcija za rub ispod ravnine markera (polje na ekranu).
+      **Na tebi:** slikati šahovnicu S25 Ultrom kad stigneš. Prvi uređaj: **Samsung Galaxy S25 Ultra**. Za mjerenje se
       koristi glavna kamera (široki kut i tele ne), u 12 MP ili 50 MP načinu, s isključenim
       "optimizatorom scene" i HDR-om jer mijenjaju lokalni kontrast; kalibracija vrijedi po
       kombinaciji uređaj + kamera + rezolucija, pa aplikacija to čita iz EXIF-a i odbija sliku iz
@@ -353,7 +354,7 @@ Akcije:
 - [ ] Izdvojiti geometriju u modul `jastuk_geom` (bez OpenCV-a), pokriti testovima na
       postojećim konturama iz `izlaz/konture_mm.json`.
 - [ ] Klasifikacija uglova s radijusom (sada se detektira samo početak/vrh/kraj).
-- [ ] Usporedba s predloškom (Hausdorffova udaljenost po rubu, prikaz u boji).
+- [x] Usporedba s predloškom (najveća udaljenost ruba nakon poravnanja, razlika gabarita, upozorenje).
 
 ---
 
@@ -504,6 +505,8 @@ workshop_rules(id, kind, fabric, seam_mm, foam_offset_mm, cover_shrink_pct, roll
 - [x] Seed baze brodova iz CSV-a (automatski pri prvom pokretanju poslužitelja).
 - [x] PWA skelet, prijava, offline red (vidi 5.3).
 - [x] Odabir broda (varijante još nisu zaseban entitet; godište i kabine su na modelu).
+- [x] Predložak modela: novi posao preuzima elemente iz ranijeg posla istog modela; usporedba
+      izmjerenog s predloškom (upozorenje > 10 mm rub / > 20 mm gabarit); preuzimanje obrisa bez mjerenja.
 - [x] Editor poligona prstom, obrazac elementa, zrcaljenje, zrcalna kopija.
 - [x] Metoda C (ručne mjere): pravokutnik, trapez, L, elipsa sa zaobljenim uglovima, u aplikaciji.
 - **Gotovo kada:** na tabletu se može otvoriti posao, izabrati Bavaria 46, nacrtati 30
@@ -599,9 +602,10 @@ Još bi dobro došlo, ali ne blokira: s kojeg su broda uzorci u `fotke/` i koji 
 6. ~~Dodaci u nacrtu (cif, kopče, rupe, gumbi…): ekran Nacrt, DXF slojevi, traka, popis.~~ Gotovo.
 8. ~~Krojevi sa šavom i zarezima, PDF 1:1 na A4/A3, pravila radionice, ručne mjere, izbacivanje
    markera izvan ravnine.~~ Gotovo.
-9. ~~Nesting na rolu, prijava dva korisnika, offline red.~~ Gotovo. Sljedeće: pilot na stvarnim
-   brodovima (faza 5), kalibracija kamere i korekcija za rub ispod ravnine markera, prikaz nestinga
-   u aplikaciji, ponude iz popisa materijala.
+9. ~~Nesting na rolu, prijava dva korisnika, offline red.~~ Gotovo.
+10. ~~Predlošci po modelu broda, kalibracija kamere, korekcija ruba ispod ravnine markera.~~ Gotovo
+    u kodu; kalibracija čeka fotografije šahovnice. Sljedeće: pilot na stvarnim brodovima, ponude iz
+    popisa materijala, prikaz nestinga u aplikaciji.
 7. ~~Faza 3, metoda B: markeri, PDF za tisak, mjerenje jednim dodirom, ručna korekcija konture.~~
    Gotovo u kodu i na sintetičkoj sceni. Sljedeće: ispiši `markeri/aruco_5x5_80mm_a4.pdf`, slikaj
    S25 Ultrom nekoliko jastuka i ležajeva s markerima i pošalji fotografije; na njima se podešava

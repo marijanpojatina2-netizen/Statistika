@@ -10,7 +10,7 @@ krojeve. Ovo je prva metoda mjerenja iz [`PLAN.md`](PLAN.md) (metoda A); ostatak
 ```bash
 pip install -e ".[test]"          # ili: pip install opencv-python-headless numpy scipy scikit-image shapely ezdxf matplotlib
 python3 -m jastuk_cv fotke/elementi.json --out izlaz
-python3 -m pytest                  # 43 testa, ~60 s (regresija na 4 fotografije, geometrija, markeri, dodaci, krojevi, nesting, API s prijavom)
+python3 -m pytest                  # 48 testova, ~70 s (regresija na 4 fotografije, geometrija, markeri, kalibracija, dodaci, krojevi, nesting, API)
 python3 data/seed_boats.py         # provjera startnog popisa brodova
 ```
 
@@ -70,6 +70,24 @@ kontrolnim kvadratom 100 mm na svakoj stranici. `materijal.csv` daje m² tkanine
 
 Ručne mjere: na ekranu mjerenja treća metoda "Ručne mjere (metar)": pravokutnik, trapez, L oblik ili
 elipsa iz brojeva, sa zaobljenim uglovima; obris ide izravno u nacrt.
+
+## Predlošci po modelu broda
+
+Kod novog posla, ako za isti model broda već postoji posao s elementima, ponudi se **predložak**:
+preuzimaju se šifre, zone, skice na shemi, debljine i dodaci, a obrisi iz izvora postaju nominalni
+obris za usporedbu (`template_outline_mm`), nikad izravno izmjereni obris. Na elementu se predložak
+može i **preuzeti bez mjerenja** (isti model, isti jastuk). Nakon mjerenja aplikacija uspoređuje
+izmjereni obris s predloškom i upozorava kad rub odstupa više od 10 mm ili gabarit više od 20 mm,
+što obično znači krivi element ili druga varijanta broda.
+
+## Kalibracija kamere i rub ispod ravnine markera
+
+`jastuk_cv/calib.py`: iz 15–20 fotografija šahovnice (`markeri/kalibracija_sahovnica_a4.pdf`)
+računa se K i distorzija leće; kalibracija se sprema po uređaju (EXIF proizvođač, model, rezolucija) i
+kod mjerenja se primjenjuje sama (uklanjanje distorzije prije detekcije mreže ili markera). S poznatim
+K iz homografije ravnine slijedi položaj kamere, pa se rub jastuka koji je **ispod ravnine markera**
+(zaobljen rub, keder; polje "rub ispod markera" na ekranu mjerenja) točno vraća na pravo mjesto
+umjesto pomaknut od kamere. Ekran: ⚙ Pravila → Kalibracija kamere.
 
 ## Nesting, prijava, rad bez mreže
 
@@ -139,6 +157,7 @@ osi x** (npr. oznaka "50") i **jedna točka unutar uzorka**. Alternativno se mog
 | `jastuk_cv/pattern.py` | krojevi: šivaća linija, šav, zarezi, traka, spužva, pravila radionice, popis materijala |
 | `jastuk_cv/kroj_out.py` | krojevi u DXF i PDF 1:1 slijepljen iz A4/A3 stranica; nesting DXF/PDF |
 | `jastuk_cv/nesting.py` | slaganje dijelova na rolu (skyline, rotacije po materijalu) |
+| `jastuk_cv/calib.py` | kalibracija kamere (šahovnica), undistort, položaj kamere iz homografije, korekcija ruba ispod ravnine |
 | `api/auth.py`, `tools/users.py` | prijava korisnika (PBKDF2, tokeni) |
 | `markeri/` | PDF za tisak: 12 ArUco markera 80 mm (A4, 3 str.) i šahovnica za kalibraciju; `tools/make_markers.py` |
 | `jastuk_cv/outputs.py` | DXF/PDF 1:1, offset, trake |

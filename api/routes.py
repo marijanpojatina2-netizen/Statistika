@@ -19,6 +19,7 @@ from jastuk_cv import features as FT
 from jastuk_cv import pattern as PT
 from jastuk_cv import kroj_out
 from jastuk_cv import nesting as NEST
+from jastuk_cv import calib as CB
 from . import auth, db
 from .models import BoatModel, Element, Job, Measurement
 
@@ -125,6 +126,86 @@ def delete_job(job_id: int, session: Session = Depends(db.get_session)):
     return {"ok": True}
 
 
+# --------------------------------------------------------------------------- predlošci po modelu broda
+@router.get("/boats/{boat_id}/templates")
+def boat_templates(boat_id: int, session: Session = Depends(db.get_session)):
+    """Poslovi istog modela broda koji imaju elemente: kandidati za predložak novog posla."""
+    jobs = session.exec(select(Job).where(Job.boat_model_id == boat_id).order_by(Job.id.desc())).all()
+    out = []
+    for j in jobs:
+        els = session.exec(select(Element).where(Element.job_id == j.id)).all()
+        if not els:
+            continue
+        out.append(dict(job_id=j.id, boat_name=j.boat_name, customer=j.customer, created_at=j.created_at,
+                        n_elements=len(els), n_measured=sum(1 for e in els if e.outline_mm)))
+    return out
+
+
+class CopyIn(BaseModel):
+    from_job_id: int
+    with_outlines: bool = True     # obris izvora kao nominalni predložak (za usporedbu i "preuzmi")
+
+
+@router.post("/jobs/{job_id}/copy_elements")
+def copy_elements(job_id: int, c: CopyIn, session: Session = Depends(db.get_session)):
+    """Preuzmi elemente (šifre, zone, skice, debljine, dodaci) iz ranijeg posla istog modela. Obrisi
+    izvora postaju predložak (template_outline_mm), nikad izravno izmjereni obris."""
+    job = session.get(Job, job_id)
+    src = session.get(Job, c.from_job_id)
+    if not job or not src:
+        raise HTTPException(404, "posao ne postoji")
+    if job.boat_model_id != src.boat_model_id:
+        raise HTTPException(422, "poslovi nisu istog modela broda")
+    existing = {e.code for e in session.exec(select(Element).where(Element.job_id == job_id)).all()}
+    n = 0
+    for e in session.exec(select(Element).where(Element.job_id == src.id).order_by(Element.id)).all():
+        if e.code in existing:
+            continue
+        session.add(Element(job_id=job_id, code=e.code, name=e.name, zone=e.zone, kind=e.kind, thickness_mm=e.thickness_mm,
+                            notes=e.notes, sketch=e.sketch, features=e.features, status="nacrtan",
+                            template_outline_mm=e.outline_mm if c.with_outlines else None, template_from=e.id))
+        n += 1
+    session.commit()
+    return dict(copied=n, from_job_id=src.id)
+
+
+@router.post("/elements/{el_id}/use_template")
+def use_template(el_id: int, session: Session = Depends(db.get_session)):
+    """Preuzmi nominalni obris predloška kao obris elementa (isti model, isti jastuk, bez mjerenja)."""
+    el = session.get(Element, el_id)
+    if not el or not el.template_outline_mm:
+        raise HTTPException(404, "element nema predložak")
+    el.outline_mm = _clean_outline(el.template_outline_mm)
+    el.method = "template"
+    el.status = "potvrđen"
+    session.add(el)
+    session.commit()
+    session.refresh(el)
+    return el
+
+
+def template_deviation(outline, template) -> Optional[dict]:
+    """Odstupanje izmjerenog obrisa od predloška nakon poravnanja (translacija + zakret po minAreaRect):
+    najveća udaljenost ruba u mm i razlika gabarita. None ako nema predloška."""
+    if not outline or not template:
+        return None
+    a = np.asarray(outline, float)
+    b = np.asarray(template, float)
+    ra, rb = cv2.minAreaRect(a.astype(np.float32)), cv2.minAreaRect(b.astype(np.float32))
+    best = None
+    for extra in (0, 90, 180, 270):
+        ang = np.radians(rb[2] + extra - ra[2])
+        R = np.array([[np.cos(ang), -np.sin(ang)], [np.sin(ang), np.cos(ang)]])
+        q = (a - ra[0]) @ R.T + rb[0]
+        d = np.array([abs(cv2.pointPolygonTest(b.astype(np.float32), (float(x), float(y)), True)) for x, y in q[::max(1, len(q) // 200)]])
+        if best is None or d.max() < best[0]:
+            best = (float(d.max()), float(d.mean()))
+    da, db_ = sorted(ra[1]), sorted(rb[1])
+    size_diff = [round(da[0] - db_[0], 1), round(da[1] - db_[1], 1)]
+    return dict(max_mm=round(best[0], 1), mean_mm=round(best[1], 1), size_diff_mm=size_diff,
+                warn=best[0] > 10 or max(abs(x) for x in size_diff) > 20)
+
+
 # --------------------------------------------------------------------------- elementi
 class ElementIn(BaseModel):
     code: Optional[str] = None
@@ -183,7 +264,8 @@ def get_element(el_id: int, session: Session = Depends(db.get_session)):
     m = session.get(Measurement, el.measurement_id) if el.measurement_id else None
     job = session.get(Job, el.job_id)
     boat = session.get(BoatModel, job.boat_model_id) if job and job.boat_model_id else None
-    return dict(element=el, measurement=m, job=job, boat=boat)
+    return dict(element=el, measurement=m, job=job, boat=boat,
+                template_deviation=template_deviation(el.outline_mm, el.template_outline_mm))
 
 
 @router.patch("/elements/{el_id}")
@@ -263,8 +345,55 @@ async def upload_photo(file: UploadFile = File(...)):
     s = min(1.0, PREVIEW_MAX / max(h, w))
     prev = cv2.resize(img, (int(round(w * s)), int(round(h * s))), interpolation=cv2.INTER_AREA) if s < 1 else img
     cv2.imwrite(str(db.PHOTOS / f"{pid}_p.jpg"), prev, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    key = CB.exif_key(str(path))
     return dict(photo_id=pid, width=w, height=h, preview_url=f"/files/photos/{pid}_p.jpg",
-                preview_width=prev.shape[1], preview_height=prev.shape[0])
+                preview_width=prev.shape[1], preview_height=prev.shape[0],
+                device_key=key, calibrated=CB.load_calib(db.VAR, key) is not None)
+
+
+def _load_photo(photo_id: str, calib_key: Optional[str] = None):
+    """Fotografija za mjerenje: ako za uređaj (EXIF) ili zadani ključ postoji kalibracija, ukloni distorziju."""
+    path = db.PHOTOS / f"{photo_id}.jpg"
+    if not path.exists():
+        raise HTTPException(404, "fotografija ne postoji")
+    img = cv2.imread(str(path))
+    key = calib_key or CB.exif_key(str(path))
+    cal = CB.load_calib(db.VAR, key)
+    if cal:
+        img = CB.undistort(img, cal)
+    return img, cal, key
+
+
+# --------------------------------------------------------------------------- kalibracija kamere
+@router.post("/calib")
+async def calibrate_camera(files: list[UploadFile] = File(...), key: str = ""):
+    """15-20 fotografija šahovnice (markeri/kalibracija_sahovnica_a4.pdf) -> K i distorzija za uređaj.
+    Ključ = EXIF prve fotografije (Make Model WxH) ili zadani `key`."""
+    imgs, first = [], None
+    for f in files:
+        data = await f.read()
+        arr = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+        if arr is None:
+            continue
+        if first is None:
+            import io
+            first = CB.exif_key(io.BytesIO(data))
+            # imdecode ne poštuje EXIF orijentaciju: kalibracija radi u orijentaciji senzora, ključ po EXIF-u
+        imgs.append(arr)
+    key = key or first or (CB.image_key(imgs[0]) if imgs else "")
+    if not imgs:
+        raise HTTPException(422, "nema slika")
+    try:
+        cal = CB.calibrate(imgs)
+    except RuntimeError as ex:
+        raise HTTPException(422, str(ex))
+    CB.save_calib(db.VAR, key, cal)
+    return dict(key=key, **cal)
+
+
+@router.get("/calib")
+def list_calibrations():
+    return [dict(key=c["key"], rms_px=round(c["rms_px"], 3), n_images=c["n_images"], image_size=c["image_size"]) for c in CB.list_calibs(db.VAR)]
 
 
 # --------------------------------------------------------------------------- mjerenje (metoda A)
@@ -282,10 +411,7 @@ def measure_element(el_id: int, m: MeasureIn, session: Session = Depends(db.get_
     el = session.get(Element, el_id)
     if not el:
         raise HTTPException(404, "element ne postoji")
-    path = db.PHOTOS / f"{m.photo_id}.jpg"
-    if not path.exists():
-        raise HTTPException(404, "fotografija ne postoji")
-    img = cv2.imread(str(path))
+    img, cal, key = _load_photo(m.photo_id)
     try:
         res = measure_grid(img, m.origin_px, x_axis_px=m.x_axis_px, seed_px=m.seed_px,
                            square_corner_cm=m.square_corner_cm, px_per_cm=m.px_per_cm)
@@ -318,6 +444,8 @@ class MeasureMarkersIn(BaseModel):
     seed_px: tuple[float, float]
     marker_mm: float = 80.0
     dict_name: str = "DICT_5X5_50"
+    edge_drop_mm: float = 0.0          # rub elementa toliko mm ISPOD ravnine markera (zaobljen rub, keder); treba kalibraciju
+    calib_key: Optional[str] = None    # ručno zadani ključ kalibracije (inače iz EXIF-a)
 
 
 @router.post("/elements/{el_id}/measure_markers")
@@ -327,10 +455,9 @@ def measure_element_markers(el_id: int, m: MeasureMarkersIn, session: Session = 
     el = session.get(Element, el_id)
     if not el:
         raise HTTPException(404, "element ne postoji")
-    path = db.PHOTOS / f"{m.photo_id}.jpg"
-    if not path.exists():
-        raise HTTPException(404, "fotografija ne postoji")
-    img = cv2.imread(str(path))
+    img, cal, key = _load_photo(m.photo_id, m.calib_key)
+    if m.edge_drop_mm and not cal:
+        raise HTTPException(422, f"korekcija za rub ispod ravnine traži kalibraciju kamere (uređaj: {key or 'nepoznat'})")
     try:
         plane = fit_plane(img, m.marker_mm, m.dict_name)
         rect, origin = rectify_plane(img, plane)
@@ -339,13 +466,24 @@ def measure_element_markers(el_id: int, m: MeasureMarkersIn, session: Session = 
     except Exception as ex:                                  # noqa: BLE001
         log.exception("mjerenje markerima nije uspjelo")
         raise HTTPException(422, f"mjerenje nije uspjelo: {ex}")
+    poly_plane = poly_px + origin
+    if m.edge_drop_mm and cal:
+        K = np.asarray(cal["K"], float)
+        cw, ch = cal.get("image_size", [img.shape[1], img.shape[0]])
+        if (cw, ch) != (img.shape[1], img.shape[0]):
+            sc = img.shape[1] / cw
+            K = K.copy(); K[0] *= sc; K[1] *= sc
+        poly_plane = CB.correct_edge_drop(poly_plane, plane.H_img_to_mm, K, float(m.edge_drop_mm))
     # obris u mm s osi y prema GORE (kao papir/DXF); u slici je y prema dolje -> zrcali y
-    p, corners = finish_polyline((poly_px + origin) * np.array([1.0, -1.0]), sigma=4.0)
+    p, corners = finish_polyline(poly_plane * np.array([1.0, -1.0]), sigma=4.0)
     p = np.round(p, 2)
     per = float(np.hypot(*np.diff(np.vstack([p, p[:1]]), axis=0).T).sum())
     cv2.imwrite(str(db.PHOTOS / f"{m.photo_id}_rect.jpg"), rect, [cv2.IMWRITE_JPEG_QUALITY, 75])
     q = plane.quality()
     q["seed_rect_px"] = [round(float(seed_rect[0]), 1), round(float(seed_rect[1]), 1)]
+    q["calibrated"] = cal is not None
+    q["device_key"] = key
+    q["edge_drop_mm"] = float(m.edge_drop_mm) if cal else 0.0
     corners_out = [dict(s_start_mm=round(c["s_start"], 1), s_end_mm=round(c["s_end"], 1),
                         s_apex_mm=round(c["s_apex"], 1), turn_deg=round(c["turn_deg"], 1)) for c in corners]
     meas = Measurement(element_id=el.id, method="markers", photo_id=m.photo_id, params=m.model_dump(),
@@ -384,7 +522,9 @@ def accept_measurement(el_id: int, a: AcceptIn, session: Session = Depends(db.ge
     session.add(el)
     session.commit()
     session.refresh(el)
-    return el
+    out = el.model_dump()
+    out["template_deviation"] = template_deviation(el.outline_mm, el.template_outline_mm)
+    return out
 
 
 # --------------------------------------------------------------------------- izvoz

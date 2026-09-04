@@ -52,6 +52,8 @@ class Element(SQLModel, table=True):
     sketch: Optional[list] = Field(default=None, sa_column=Column(JSON))
     outline_mm: Optional[list] = Field(default=None, sa_column=Column(JSON))
     features: Optional[list] = Field(default=None, sa_column=Column(JSON))   # dodaci: cif, keder, kopče, rupe... (jastuk_cv.features)
+    template_outline_mm: Optional[list] = Field(default=None, sa_column=Column(JSON))   # nominalni obris iz predloška modela (usporedba)
+    template_from: Optional[int] = None    # element iz kojeg je preuzet predložak
     method: str = ""                # grid | markers | manual
     status: str = "nacrtan"         # nacrtan | izmjeren | potvrđen
     measurement_id: Optional[int] = None
