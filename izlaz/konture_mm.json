@@ -1032,7 +1032,14 @@
     "s_apex_mm": 3504.0,
     "turn_deg": 89.3
    }
-  ]
+  ],
+  "quality": {
+   "grid_nodes": 152,
+   "homography_rms_px": 1.65,
+   "stroke_mm": 4.2,
+   "stroke_max_mm": 8.59,
+   "px_per_cm": 12.0
+  }
  },
  {
   "layer": "MALA KUPA STOLA",
@@ -1773,7 +1780,14 @@
     "s_apex_mm": 2840.0,
     "turn_deg": 65.0
    }
-  ]
+  ],
+  "quality": {
+   "grid_nodes": 99,
+   "homography_rms_px": 1.58,
+   "stroke_mm": 5.0,
+   "stroke_max_mm": 7.8,
+   "px_per_cm": 15.5
+  }
  },
  {
   "layer": "1A PROVA LIJEVA",
@@ -2526,7 +2540,14 @@
     "s_apex_mm": 2474.0,
     "turn_deg": 80.1
    }
-  ]
+  ],
+  "quality": {
+   "grid_nodes": 73,
+   "homography_rms_px": 1.6,
+   "stroke_mm": 6.0,
+   "stroke_max_mm": 9.79,
+   "px_per_cm": 17.0
+  }
  },
  {
   "layer": "1F LICE",
@@ -3369,6 +3390,13 @@
     "s_apex_mm": 2578.0,
     "turn_deg": 98.6
    }
-  ]
+  ],
+  "quality": {
+   "grid_nodes": 66,
+   "homography_rms_px": 1.99,
+   "stroke_mm": 5.0,
+   "stroke_max_mm": 10.79,
+   "px_per_cm": 19.5
+  }
  }
 ]

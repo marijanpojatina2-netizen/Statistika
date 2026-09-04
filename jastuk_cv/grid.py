@@ -13,6 +13,7 @@ Koraci:
 from __future__ import annotations
 
 import dataclasses
+import logging
 import math
 
 import cv2
@@ -20,6 +21,7 @@ import numpy as np
 from scipy.interpolate import RBFInterpolator
 
 GRID_CM = 10.0  # razmak crvenih linija na papiru
+log = logging.getLogger("jastuk_cv")
 
 
 @dataclasses.dataclass
@@ -169,8 +171,38 @@ def index_lines(lines, origin_px, normal, spacing_px, max_missing=3):
     return [(lines[i][0], lines[i][1], lines[i][2], k) for i, k in sorted(idx.items(), key=lambda kv: kv[1])]
 
 
-def detect_grid(img_bgr: np.ndarray, origin_px, xdir, ydir, px_per_cm: float, verbose=True) -> GridResult:
+def family_spacing_px(lines) -> float | None:
+    """Tipični razmak (px) susjednih linija jedne obitelji: medijan razlika okomitih udaljenosti
+    od zajedničkog pravca. Kratke i kose linije su već odbačene u detect_family; rubovi papira i
+    ručne linije eventualno daju jedan-dva 'kriva' razmaka koje medijan preživi."""
+    if len(lines) < 3:
+        return None
+    dirs = np.array([d if np.dot(d, lines[0][1]) >= 0 else -d for _, d, _ in lines])
+    med = dirs.mean(0)
+    med /= np.linalg.norm(med)
+    n = np.array([-med[1], med[0]])
+    offs = np.sort(np.array([np.dot(p0, n) for p0, _, _ in lines]))
+    d = np.diff(offs)
+    d = d[d > 0.25 * np.median(d)]
+    return float(np.median(d)) if len(d) else None
+
+
+def estimate_px_per_cm(img_bgr: np.ndarray) -> float:
+    """Približna gustoća piksela (px/cm) iz razmaka detektiranih linija mreže, bez ručnog ulaza.
+    Dovoljno točno za indeksiranje linija (index_lines se lokalno prilagođava perspektivi)."""
     red = redness(img_bgr)
+    sp = [family_spacing_px(detect_family(red, vertical=v)) for v in (True, False)]
+    sp = [x for x in sp if x]
+    if not sp:
+        raise RuntimeError("mreža nije detektirana (nema dovoljno crvenih linija)")
+    return float(np.mean(sp)) / GRID_CM
+
+
+def detect_grid(img_bgr: np.ndarray, origin_px, xdir, ydir, px_per_cm: float | None = None, verbose=True) -> GridResult:
+    red = redness(img_bgr)
+    if px_per_cm is None:
+        px_per_cm = estimate_px_per_cm(img_bgr)
+        log.info("  procijenjeno px/cm: %.2f", px_per_cm)
     xdir = np.asarray(xdir, float)
     ydir = np.asarray(ydir, float)
     fam_v = detect_family(red, vertical=True)
@@ -183,9 +215,8 @@ def detect_grid(img_bgr: np.ndarray, origin_px, xdir, ydir, px_per_cm: float, ve
     sp = GRID_CM * px_per_cm
     x_lines = index_lines(x_lines_raw, origin_px, xdir, sp)   # k -> x = 10k
     y_lines = index_lines(y_lines_raw, origin_px, ydir, sp)   # k -> y = 10k
-    if verbose:
-        print("  linije x=const: k =", [l[3] for l in x_lines])
-        print("  linije y=const: k =", [l[3] for l in y_lines])
+    log.info("  linije x=const: k = %s", [l[3] for l in x_lines])
+    log.info("  linije y=const: k = %s", [l[3] for l in y_lines])
 
     cm, px = [], []
     for p0x, dx_, _, kx in x_lines:
@@ -199,8 +230,7 @@ def detect_grid(img_bgr: np.ndarray, origin_px, xdir, ydir, px_per_cm: float, ve
     px = np.array(px, float)
     H, inl = cv2.findHomography(cm, px, cv2.RANSAC, 6.0)
     inl = inl.ravel().astype(bool)
-    if verbose:
-        print(f"  gruba homografija: {inl.sum()}/{len(inl)} inlier presjecišta")
+    log.info("  gruba homografija: %d/%d inlier presjecišta", inl.sum(), len(inl))
 
     # ------------------------------------------------------------- dorada čvorova
     R = 10.0  # px/cm u pomoćnoj ispravljenoj slici
@@ -254,14 +284,12 @@ def detect_grid(img_bgr: np.ndarray, origin_px, xdir, ydir, px_per_cm: float, ve
     H2, _ = cv2.findHomography(nodes_cm, nodes_px, 0)
     proj = cv2.perspectiveTransform(nodes_cm.reshape(-1, 1, 2), H2).reshape(-1, 2)
     resid = np.sqrt(((proj - nodes_px) ** 2).sum(1))
-    if verbose:
-        print(f"  precizni čvorovi: {len(nodes_cm)} (odbačeno {(~inl2).sum()}, {n_dark} koord. iz crne linije),"
-              f" ostatak homografije RMS={np.sqrt((resid**2).mean()):.2f} px, max={resid.max():.2f} px")
+    log.info("  precizni čvorovi: %d (odbačeno %d, %d koord. iz crne linije), ostatak homografije RMS=%.2f px, max=%.2f px",
+             len(nodes_cm), (~inl2).sum(), n_dark, np.sqrt((resid ** 2).mean()), resid.max())
     rbf = RBFInterpolator(nodes_cm, nodes_px, kernel="thin_plate_spline", degree=1, smoothing=1.0)
     rp = rbf(nodes_cm)
     r2 = np.sqrt(((rp - nodes_px) ** 2).sum(1))
-    if verbose:
-        print(f"  TPS ostatak RMS={np.sqrt((r2**2).mean()):.2f} px, max={r2.max():.2f} px")
+    log.info("  TPS ostatak RMS=%.2f px, max=%.2f px", np.sqrt((r2 ** 2).mean()), r2.max())
     return GridResult(H=H2, nodes_cm=nodes_cm, nodes_px=nodes_px, rbf=rbf,
                       resid_h_px=float(np.sqrt((resid ** 2).mean())),
                       coarse_lines={"x": x_lines, "y": y_lines},

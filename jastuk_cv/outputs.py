@@ -10,7 +10,7 @@ from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
 import numpy as np                                  # noqa: E402
 from shapely.geometry import Polygon                # noqa: E402
 
-from contour import simplify_closed, perimeter, resample_closed  # noqa: E402
+from .contour import simplify_closed, perimeter, resample_closed  # noqa: E402
 
 GAP = 100.0        # razmak elemenata u crtežu (mm)
 STRIP_H = 90.0     # širina trake (mm)

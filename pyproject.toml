@@ -1,0 +1,30 @@
+[project]
+name = "jastuk-cv"
+version = "0.1.0"
+description = "Mjerenje krojnih uzoraka jastuka za plovila iz fotografija (folija + papir s mrežom)"
+requires-python = ">=3.10"
+dependencies = [
+    "opencv-python-headless>=4.8",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "scikit-image>=0.21",
+    "shapely>=2.0",
+    "ezdxf>=1.1",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+jastuk-cv = "jastuk_cv.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["jastuk_cv"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

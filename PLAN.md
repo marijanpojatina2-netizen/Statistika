@@ -148,8 +148,11 @@ Predložak vezan uz varijantu, a ne uz model, štedi nam krive pretpostavke.
 
 ### 4.4 Akcije
 
-- [ ] Sastaviti i provjeriti startni popis (proizvođač, model, godišta, varijante) u CSV.
-- [ ] Skripta `seed_boats.py` koja iz CSV-a puni bazu (idempotentno; može se pokretati više puta).
+- [x] Startni popis u `data/brodovi.csv`: 90 modela (59 jedrilica, 31 katamaran), s duljinom, širinom,
+      godištima i brojem kabina iz javnih specifikacija. **Brojke treba provjeriti** prije nego
+      postanu "istina" u bazi; do tada su orijentacijske.
+- [x] `data/seed_boats.py` provjerava CSV (duplikati, tipovi, raspon dimenzija, godine) i ispisuje
+      JSON. Punjenje baze se dodaje kad baza postoji (faza 1).
 - [ ] Odlučiti kako se crtaju sheme: prazna shema po tipu broda (jedrilica/katamaran, generički
       tlocrt) na koju se elementi slažu prstom. Ne treba precizna geometrija broda, samo
       prepoznatljiv raspored.
@@ -241,12 +244,15 @@ Postojeći cjevovod, ali bez ručnog `config.py`:
 4. Korisnik vidi konturu preko ispravljene slike, prstom miče točke ako treba, potvrdi.
 
 Akcije:
-- [ ] `krojevi/` prepakirati u Python paket `jastuk_cv` s čistim API-jem (`measure_grid(image,
-      origin_px, xdir, ydir, seed) -> Contour`), bez čitanja `config.py`.
-- [ ] Automatska procjena `px_per_cm` iz razmaka detektiranih linija (sada je ručni ulaz).
+- [x] `krojevi/` prepakiran u Python paket `jastuk_cv` s API-jem `measure_grid(img, origin_px,
+      x_axis_px, seed_px) -> GridMeasurement`; konfiguracija je JSON uz fotografije
+      (`fotke/elementi.json`), regresijski test na 4 fotografije daje iste konture.
+- [x] Automatska procjena `px_per_cm` iz razmaka detektiranih linija (unutar 15 % ručnih vrijednosti
+      na sve 4 fotografije; ručni unos i dalje moguć).
 - [ ] Robusnost: sjene, folija koja sjaji, dvostruke linije (slučaj `1F LICE`), papir koji nije
       cijeli u kadru. Test na svim postojećim fotografijama + 20 novih.
-- [ ] Vraćanje "ocjene pouzdanosti" (ostatak homografije, broj presjecišta, pokrivenost).
+- [x] Vraćanje "ocjene pouzdanosti" (`GridMeasurement.quality()`: broj čvorova, ostatak homografije,
+      debljina poteza, px/cm). Pragovi za "ponovi sliku" se određuju u fazi 2.
 
 ### 6.3 Metoda B: fotografija odozgo s markerima (glavna nova metoda)
 
@@ -288,8 +294,12 @@ spužva − 2 % zbog napetosti. Pravila su konfigurabilna po tipu elementa i mat
 Akcije:
 - [ ] Dizajn i tisak markera (kartice 80 mm, 12 kom u setu, mat papir, laminat, magnet).
 - [ ] Modul `measure_markers(image, marker_size_mm) -> plane, rectified image, error estimate`.
-- [ ] Kalibracija za tablet + 2 mobitela (tvoj i kolegin); postupak da se doda novi uređaj
-      (slikaj šahovnicu 15 puta, aplikacija sama izračuna parametre).
+- [ ] Kalibracija za tablet + mobitele; postupak da se doda novi uređaj (slikaj šahovnicu 15 puta,
+      aplikacija sama izračuna parametre). Prvi uređaj: **Samsung Galaxy S25 Ultra**. Za mjerenje se
+      koristi glavna kamera (široki kut i tele ne), u 12 MP ili 50 MP načinu, s isključenim
+      "optimizatorom scene" i HDR-om jer mijenjaju lokalni kontrast; kalibracija vrijedi po
+      kombinaciji uređaj + kamera + rezolucija, pa aplikacija to čita iz EXIF-a i odbija sliku iz
+      nekalibrirane kombinacije.
 - [ ] Segmentacija na dodir (MobileSAM na poslužitelju; CPU je dovoljan za jednu sliku u ~2 s).
 - [ ] Živi pomoćnik za snimanje (nagib iz žiroskopa, prepoznavanje markera na tabletu u JS-u
       preko OpenCV.js, samo da kaže "svi markeri vidljivi").
@@ -548,16 +558,18 @@ radionice (bar 2 sata tjedno za testiranje i odluke).
 | Prvih 5 modela | Bavaria Cruiser 46, Oceanis 46.1, Sun Odyssey 440, Lagoon 42, Bali 4.2 | sheme i predlošci u fazi 1 (4.4) |
 | Korisnici | Ti i kolega | dva računa, puna prava, sukobi po elementu s poviješću (9) |
 
-Što bi još dobro došlo, ali ne blokira početak: koji su mobiteli (model) za kalibraciju kamere i
-s kojeg su broda uzorci u `fotke/`.
+| Mobitel za fotografije | Samsung Galaxy S25 Ultra | glavna kamera, kalibracija po kombinaciji kamera + rezolucija (6.3) |
+
+Još bi dobro došlo, ali ne blokira: s kojeg su broda uzorci u `fotke/` i koji mobitel ima kolega.
 
 ---
 
 ## 14. Prvi koraci (ovaj tjedan)
 
-1. Napravim strukturu repozitorija i prepakiram `krojevi/` u paket s testovima na 4 postojeće
-   fotografije (ništa se ne mijenja u rezultatu, samo API).
-2. CSV startnog popisa brodova + seed skripta, s prvih 5 modela označenih kao prioritet.
+1. ~~Prepakirati `krojevi/` u paket s testovima na 4 postojeće fotografije.~~ Gotovo: `jastuk_cv/`,
+   `tests/`, 17 testova, konture identične.
+2. ~~CSV startnog popisa brodova + seed skripta.~~ Gotovo: `data/brodovi.csv` (90 modela, prvih 5
+   označeno prioritetom), `data/seed_boats.py`.
 3. Wireframe 6 ekrana za pregled na Android tabletu.
 4. Naručiti tisak ArUco markera (dizajn je pola sata, tisak i laminat par dana) da budu spremni
    za fazu 3.
