@@ -178,6 +178,7 @@ with sync_playwright() as p:
     page.wait_for_selector("#files table", timeout=120000)
     page.screenshot(path=f"{OUT}/13_izvoz_krojevi.png")
     print("IZVOZ:", page.inner_text("#files").replace("\n", " | ")[:400])
+    assert "Ponuda:" in page.inner_text("#files") and "ponuda.pdf" in page.inner_text("#files")
     # ---- pravila radionice
     page.goto(BASE + "/#/pravila")
     page.wait_for_selector("#seam")

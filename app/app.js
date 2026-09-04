@@ -314,7 +314,7 @@ async function jobView(id) {
           <table><tbody id="els"></tbody></table></div>
         <div class="card"><h2 style="margin-top:0">Izvoz</h2>
           <p class="muted small">Krojevi (lice, dno, traka, spužva sa šavom i zarezima) kao DXF i PDF 1:1 slijepljen iz stranica, popis materijala, obrisi s dodacima.</p>
-          <div class="row"><select id="page" style="width:auto"><option value="A4">PDF 1:1 na A4</option><option value="A3">PDF 1:1 na A3</option></select><button id="exp" class="primary">Generiraj krojeve</button></div>
+          <div class="row"><select id="page" style="width:auto"><option value="A4">PDF 1:1 na A4</option><option value="A3">PDF 1:1 na A3</option></select><label style="margin:0">popust % <input id="disc" type="number" value="0" style="width:70px;padding:6px"></label><button id="exp" class="primary">Generiraj krojeve i ponudu</button></div>
           <div class="files" id="files"></div></div>
         <div class="card"><button class="danger" id="del">Obriši posao</button></div>
       </div>
@@ -347,9 +347,9 @@ async function jobView(id) {
   $("#exp").onclick = async () => {
     $("#exp").disabled = true;
     try {
-      const r = await api(`/jobs/${id}/export?page=${$("#page").value}`, { method: "POST" });
+      const r = await api(`/jobs/${id}/export?page=${$("#page").value}&discount=${+$("#disc").value || 0}`, { method: "POST" });
       $("#files").innerHTML = r.files.map(f => `<a href="${fileUrl(f.url)}" target="_blank">${f.name}</a>`).join("")
-        + `<table style="margin-top:8px"><tr><th>element</th><th>materijal</th><th>tkanina m²</th><th>traka</th><th>spužva m²</th></tr>${r.materijal.map(m => `<tr><td>${esc(m.element)}</td><td>${m.material}</td><td>${m.fabric_m2}</td><td>${m.strip_height_mm} × ${m.strip_length_mm}</td><td>${m.foam_m2} × ${m.foam_thickness_mm} mm</td></tr>`).join("")}</table>${r.role && r.role.length ? `<p class="small">${r.role.map(x => x.error ? `⚠️ ${x.material}: ${esc(x.error)}` : `rola ${x.material} ${x.roll_width_mm} mm: <b>${x.length_m} m</b> (${x.n_parts} komada, iskoristivost ${x.utilization_pct} %)`).join("<br>")}</p>` : ""}<p class="muted small">${r.n_elements} elemenata</p>`;
+        + `<table style="margin-top:8px"><tr><th>element</th><th>materijal</th><th>tkanina m²</th><th>traka</th><th>spužva m²</th></tr>${r.materijal.map(m => `<tr><td>${esc(m.element)}</td><td>${m.material}</td><td>${m.fabric_m2}</td><td>${m.strip_height_mm} × ${m.strip_length_mm}</td><td>${m.foam_m2} × ${m.foam_thickness_mm} mm</td></tr>`).join("")}</table>${r.ponuda ? `<p class="small"><b>Ponuda: ${r.ponuda.ukupno_eur.toFixed(2)} ${r.ponuda.valuta}</b> (bez PDV-a ${r.ponuda.bez_pdv_eur.toFixed(2)}; materijal ${r.ponuda.materijal_eur.toFixed(2)}, rad ${r.ponuda.rad_eur.toFixed(2)}, dodaci ${r.ponuda.dodaci_eur.toFixed(2)}, marža ${r.ponuda.marza_eur.toFixed(2)}${r.ponuda.popust_eur ? `, popust −${r.ponuda.popust_eur.toFixed(2)}` : ""})</p>` : ""}${r.role && r.role.length ? `<p class="small">${r.role.map(x => x.error ? `⚠️ ${x.material}: ${esc(x.error)}` : `rola ${x.material} ${x.roll_width_mm} mm: <b>${x.length_m} m</b> (${x.n_parts} komada, iskoristivost ${x.utilization_pct} %)`).join("<br>")}</p>` : ""}<p class="muted small">${r.n_elements} elemenata</p>`;
     } catch (e) { toast(e.message); } finally { $("#exp").disabled = false; }
   };
   $("#del").onclick = async () => { if (confirm("Obrisati posao i sve elemente?")) { await api(`/jobs/${id}`, { method: "DELETE" }); location.hash = "#/"; } };
@@ -961,6 +961,16 @@ async function rulesView() {
     <div class="card"><h2 style="margin-top:0">Role i ispis</h2>
       <div class="row">${num("r_vinil", "širina role vinil (mm)", r.roll_width_mm.vinil)}${num("r_tkanina", "širina role tkanina (mm)", r.roll_width_mm.tkanina)}${num("gap", "razmak komada (mm)", r.gap_mm)}
         <div class="grow"><label>PDF 1:1 na</label><select id="page"><option ${r.page === "A4" ? "selected" : ""}>A4</option><option ${r.page === "A3" ? "selected" : ""}>A3</option></select></div></div></div>
+    <div class="card"><h2 style="margin-top:0">Radionica (zaglavlje ponude)</h2>
+      <div class="row">${["naziv", "adresa", "oib", "kontakt"].map(k => `<div class="grow"><label>${k}</label><input id="w_${k}" value="${esc(r.radionica_full[k])}"></div>`).join("")}
+        ${num("w_rok_dana", "rok izrade (dana)", r.radionica_full.rok_dana)}${num("w_vrijedi_dana", "ponuda vrijedi (dana)", r.radionica_full.vrijedi_dana)}</div></div>
+    <div class="card"><h2 style="margin-top:0">Cjenik (${esc(r.radionica_full.valuta)})</h2>
+      <div class="row">${num("c_vinil", "vinil, € po dužnom m role", r.cjenik_full.tkanina_eur_m.vinil, 0.1)}${num("c_tkanina", "tkanina, € po dužnom m role", r.cjenik_full.tkanina_eur_m.tkanina, 0.1)}${num("c_spuzva", "spužva € / m³", r.cjenik_full.spuzva_eur_m3, 1)}</div>
+      <h2>Rad po elementu (€)</h2>
+      <div class="row">${Object.entries(r.cjenik_full.rad_eur_element).map(([k, v]) => num("r_" + k, k, v, 0.5)).join("")}</div>
+      <h2>Dodaci (€ po m za cif/keder/čičak, € po komadu za ostalo)</h2>
+      <div class="row">${Object.entries(r.cjenik_full.dodaci_eur).filter(([k]) => k !== "napomena").map(([k, v]) => num("d_" + k, k, v, 0.1)).join("")}</div>
+      <div class="row" style="margin-top:8px">${num("c_marza", "marža %", r.cjenik_full.marza_pct, 0.5)}${num("c_pdv", "PDV %", r.cjenik_full.pdv_pct, 0.5)}</div></div>
     <div class="card"><h2 style="margin-top:0">Kamere</h2><p class="muted small">Kalibracija uklanja distorziju leće i omogućuje korekciju za rub ispod ravnine markera.</p><a class="btn" href="#/kalibracija">📷 Kalibracija kamere</a></div>
     <div class="tools"><button class="primary" id="save">Spremi</button></div>`;
   $("#save").onclick = async () => {
@@ -968,7 +978,11 @@ async function rulesView() {
     await api("/rules", { method: "PUT", body: { seam_mm: v("seam"), notch_step_mm: v("nstep"), notch_len_mm: v("nlen"),
       foam_offset_mm: { kokpit: v("f_kokpit"), paluba: v("f_paluba"), default: v("f_default") },
       cover_shrink_pct: { vinil: v("s_vinil"), tkanina: v("s_tkanina") }, roll_width_mm: { vinil: v("r_vinil"), tkanina: v("r_tkanina") },
-      gap_mm: v("gap"), page: $("#page").value } });
+      gap_mm: v("gap"), page: $("#page").value,
+      radionica: { naziv: $("#w_naziv").value, adresa: $("#w_adresa").value, oib: $("#w_oib").value, kontakt: $("#w_kontakt").value, rok_dana: v("w_rok_dana"), vrijedi_dana: v("w_vrijedi_dana") },
+      cjenik: { tkanina_eur_m: { vinil: v("c_vinil"), tkanina: v("c_tkanina") }, spuzva_eur_m3: v("c_spuzva"), marza_pct: v("c_marza"), pdv_pct: v("c_pdv"),
+        rad_eur_element: Object.fromEntries([...$("#view").querySelectorAll("[id^=r_]")].map(i => [i.id.slice(2), +i.value])),
+        dodaci_eur: Object.fromEntries([...$("#view").querySelectorAll("[id^=d_]")].map(i => [i.id.slice(2), +i.value])) } } });
     toast("Pravila spremljena"); location.hash = "#/";
   };
 }

@@ -20,6 +20,7 @@ from jastuk_cv import pattern as PT
 from jastuk_cv import kroj_out
 from jastuk_cv import nesting as NEST
 from jastuk_cv import calib as CB
+from jastuk_cv import quote as QT
 from . import auth, db
 from .models import BoatModel, Element, Job, Measurement
 
@@ -229,7 +230,8 @@ def load_rules() -> dict:
 
 @router.get("/rules")
 def get_rules():
-    return load_rules()
+    r = load_rules()
+    return dict(r, cjenik_full=QT.prices(r), radionica_full=QT.workshop(r))
 
 
 @router.put("/rules")
@@ -529,7 +531,7 @@ def accept_measurement(el_id: int, a: AcceptIn, session: Session = Depends(db.ge
 
 # --------------------------------------------------------------------------- izvoz
 @router.post("/jobs/{job_id}/export")
-def export_job(job_id: int, page: str = "", session: Session = Depends(db.get_session)):
+def export_job(job_id: int, page: str = "", discount: float = 0.0, session: Session = Depends(db.get_session)):
     job = session.get(Job, job_id)
     if not job:
         raise HTTPException(404, "posao ne postoji")
@@ -592,6 +594,15 @@ def export_job(job_id: int, page: str = "", session: Session = Depends(db.get_se
         + "\nrola;materijal;sirina_mm;duljina_m;iskoristivost_pct\n"
         + "".join(f"rola;{r['material']};{r['roll_width_mm']};{r.get('length_m', '')};{r.get('utilization_pct', '')}\n" for r in role),
         encoding="utf-8")
-    names = [f"kroj_1_1_{page}.pdf", "kroj_1_1.dxf"] + nest_names + ["materijal.csv", "dodaci.csv", "elementi_1_1.dxf", "elementi_1_1.pdf",
+    # ---- ponuda
+    boat = session.get(BoatModel, job.boat_model_id) if job.boat_model_id else None
+    qin = [dict(layer=k["layer"], kind=e.kind, bom=k["kroj"]["bom"], dodaci=FT.bom(r["poly_mm"], e.features or []))
+           for e, r, k in zip(elems, results, kroj_elems)]
+    q = QT.quote(qin, [x for x in role if "length_m" in x], rules, discount_pct=discount)
+    QT.write_quote_pdf(q, dict(id=job.id, customer=job.customer, boat_name=job.boat_name, marina=job.marina,
+                               boat=f"{boat.builder} {boat.model}" if boat else None), rules, str(out / "ponuda.pdf"))
+    names = [f"kroj_1_1_{page}.pdf", "kroj_1_1.dxf"] + nest_names + ["ponuda.pdf", "materijal.csv", "dodaci.csv", "elementi_1_1.dxf", "elementi_1_1.pdf",
              "elementi_traka_offset.dxf", "elementi_traka_offset.pdf", "konture_mm.json"]
-    return dict(files=[dict(name=n, url=f"/files/jobs/{job_id}/{n}") for n in names], n_elements=len(elems), page=page, materijal=mat, role=role)
+    return dict(files=[dict(name=n, url=f"/files/jobs/{job_id}/{n}") for n in names], n_elements=len(elems), page=page, materijal=mat, role=role,
+                ponuda=dict(ukupno_eur=q["ukupno_eur"], bez_pdv_eur=q["bez_pdv_eur"], materijal_eur=q["materijal_eur"], rad_eur=q["rad_eur"],
+                            dodaci_eur=q["dodaci_eur"], marza_eur=q["marza_eur"], popust_eur=q["popust_eur"], pdv_eur=q["pdv_eur"], valuta=q["valuta"]))

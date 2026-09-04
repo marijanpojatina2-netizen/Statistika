@@ -408,7 +408,7 @@ Akcije:
 - [ ] Prikaz nestinga u aplikaciji i ručno pomicanje komada prstom.
 - [x] PDF 1:1 s tilingom na A4/A3 (preklop 10 mm, križići, kontrolni kvadrat 100 mm na svakoj stranici,
       uputa na naslovnoj). Lice i spužva po stranicama, dno = zrcalno lice, traka po tablici zareza.
-- [x] Popis materijala (`materijal.csv`: m² tkanine i spužve, traka, rola). Cjenik i ponuda: kasnije.
+- [x] Popis materijala (`materijal.csv`). Cjenik i ponuda (`ponuda.pdf`, marža, popust, PDV): gotovo.
 
 ### 8.4 Pravila radionice: početne vrijednosti (ti odlučuješ kasnije, ovo je start)
 
@@ -548,7 +548,7 @@ workshop_rules(id, kind, fabric, seam_mm, foam_offset_mm, cover_shrink_pct, roll
 
 - LiDAR/3D za naslone i zakrivljene ležajeve.
 - HPGL/PLT izvoz i izravno slanje na ploter ili rezač, kad se kupi.
-- Ponude i računi iz popisa materijala.
+- Računi (ponuda je gotova).
 - Fotografije ugrađenih jastuka uz trup (za sljedeći isti brod i za marketing).
 - Više radionica / više jezika, ako se softver ikad nudi drugima.
 
@@ -604,8 +604,9 @@ Još bi dobro došlo, ali ne blokira: s kojeg su broda uzorci u `fotke/` i koji 
    markera izvan ravnine.~~ Gotovo.
 9. ~~Nesting na rolu, prijava dva korisnika, offline red.~~ Gotovo.
 10. ~~Predlošci po modelu broda, kalibracija kamere, korekcija ruba ispod ravnine markera.~~ Gotovo
-    u kodu; kalibracija čeka fotografije šahovnice. Sljedeće: pilot na stvarnim brodovima, ponude iz
-    popisa materijala, prikaz nestinga u aplikaciji.
+    u kodu; kalibracija čeka fotografije šahovnice.
+11. ~~Ponuda iz popisa materijala s cjenikom.~~ Gotovo. Sljedeće: pilot na stvarnim brodovima (treba
+    fotografije), prikaz nestinga u aplikaciji s pomicanjem komada.
 7. ~~Faza 3, metoda B: markeri, PDF za tisak, mjerenje jednim dodirom, ručna korekcija konture.~~
    Gotovo u kodu i na sintetičkoj sceni. Sljedeće: ispiši `markeri/aruco_5x5_80mm_a4.pdf`, slikaj
    S25 Ultrom nekoliko jastuka i ležajeva s markerima i pošalji fotografije; na njima se podešava

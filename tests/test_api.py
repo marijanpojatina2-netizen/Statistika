@@ -282,3 +282,18 @@ def test_calibration_api_and_edge_drop(client, tmp_path):
     q = r1.json()["quality"]
     assert q["calibrated"] is True and q["edge_drop_mm"] == 20 and q["n_markers"] >= 5
     assert abs(r1.json()["perimeter_mm"] - r0["perimeter_mm"]) < 150       # korekcija je reda mm-cm, ne ruši mjerenje
+
+
+def test_export_quote(client):
+    client.put("/api/rules", json={"cjenik": {"marza_pct": 15, "rad_eur_element": {"sjedalo": 50}}, "radionica": {"naziv": "Tapetarija Test", "oib": "12345678901"}})
+    r = client.get("/api/rules").json()
+    assert r["cjenik_full"]["marza_pct"] == 15 and r["cjenik_full"]["rad_eur_element"]["madrac"] == 60 and r["radionica_full"]["naziv"] == "Tapetarija Test"
+    j = client.post("/api/jobs", json={"boat_name": "Ponuda", "customer": "Kupac"}).json()
+    client.post(f"/api/jobs/{j['job']['id']}/elements", json={"code": "S1", "zone": "kokpit", "kind": "sjedalo", "thickness_mm": 50,
+                "outline_mm": [[0, 0], [800, 0], [800, 400], [0, 400]], "features": [{"type": "kopca", "p": [50, 50]}, {"type": "kopca", "p": [750, 50]}]})
+    ex = client.post(f"/api/jobs/{j['job']['id']}/export?discount=10").json()
+    assert "ponuda.pdf" in [f["name"] for f in ex["files"]]
+    p = ex["ponuda"]
+    assert p["rad_eur"] == 50 and p["dodaci_eur"] == 5.0 and p["popust_eur"] > 0 and p["ukupno_eur"] == pytest.approx(p["bez_pdv_eur"] * 1.25, abs=0.02)
+    assert client.get(f"/files/jobs/{j['job']['id']}/ponuda.pdf").status_code == 200
+    client.put("/api/rules", json={"cjenik": {"marza_pct": 20, "rad_eur_element": {"sjedalo": 45}}})

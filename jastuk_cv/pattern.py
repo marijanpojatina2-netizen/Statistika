@@ -29,6 +29,8 @@ DEFAULT_RULES = {
     "roll_width_mm": {"vinil": 1370, "tkanina": 1400},
     "gap_mm": 15,
     "page": "A4",                                    # A4 | A3 za PDF 1:1
+    "cjenik": {},                                    # vidi quote.DEFAULT_PRICES (prazno = zadane cijene)
+    "radionica": {},                                 # naziv, adresa, oib, kontakt, valuta, rok_dana, vrijedi_dana
 }
 PAGES = {"A4": (210.0, 297.0), "A3": (297.0, 420.0)}
 

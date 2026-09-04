@@ -10,7 +10,7 @@ krojeve. Ovo je prva metoda mjerenja iz [`PLAN.md`](PLAN.md) (metoda A); ostatak
 ```bash
 pip install -e ".[test]"          # ili: pip install opencv-python-headless numpy scipy scikit-image shapely ezdxf matplotlib
 python3 -m jastuk_cv fotke/elementi.json --out izlaz
-python3 -m pytest                  # 48 testova, ~70 s (regresija na 4 fotografije, geometrija, markeri, kalibracija, dodaci, krojevi, nesting, API)
+python3 -m pytest                  # 51 test, ~75 s (regresija na 4 fotografije, geometrija, markeri, kalibracija, dodaci, krojevi, nesting, ponuda, API)
 python3 data/seed_boats.py         # provjera startnog popisa brodova
 ```
 
@@ -70,6 +70,13 @@ kontrolnim kvadratom 100 mm na svakoj stranici. `materijal.csv` daje m² tkanine
 
 Ručne mjere: na ekranu mjerenja treća metoda "Ručne mjere (metar)": pravokutnik, trapez, L oblik ili
 elipsa iz brojeva, sa zaobljenim uglovima; obris ide izravno u nacrt.
+
+## Ponuda
+
+Izvoz posla radi i `ponuda.pdf` (`jastuk_cv/quote.py`): po elementu tkanina, spužva (m² × debljina ×
+€/m³), rad po tipu elementa i dodaci (cif, keder, čičak po metru; kopče, rupe, gumbi po komadu),
+tkanina po dužnom metru role iz nestinga, marža, popust po poslu, PDV. Cjenik i zaglavlje radionice
+(naziv, adresa, OIB, kontakt, rok, valjanost) su u ⚙ Pravilima; iznosi su i u odgovoru izvoza.
 
 ## Predlošci po modelu broda
 
@@ -157,6 +164,7 @@ osi x** (npr. oznaka "50") i **jedna točka unutar uzorka**. Alternativno se mog
 | `jastuk_cv/pattern.py` | krojevi: šivaća linija, šav, zarezi, traka, spužva, pravila radionice, popis materijala |
 | `jastuk_cv/kroj_out.py` | krojevi u DXF i PDF 1:1 slijepljen iz A4/A3 stranica; nesting DXF/PDF |
 | `jastuk_cv/nesting.py` | slaganje dijelova na rolu (skyline, rotacije po materijalu) |
+| `jastuk_cv/quote.py` | ponuda iz popisa materijala i cjenika, PDF |
 | `jastuk_cv/calib.py` | kalibracija kamere (šahovnica), undistort, položaj kamere iz homografije, korekcija ruba ispod ravnine |
 | `api/auth.py`, `tools/users.py` | prijava korisnika (PBKDF2, tokeni) |
 | `markeri/` | PDF za tisak: 12 ArUco markera 80 mm (A4, 3 str.) i šahovnica za kalibraciju; `tools/make_markers.py` |
