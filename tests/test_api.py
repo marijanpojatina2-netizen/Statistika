@@ -18,6 +18,12 @@ PHOTO = os.path.join(ROOT, "fotke", "mala_kupa_stola.jpg")
 @pytest.fixture(scope="module")
 def client():
     with TestClient(app) as c:
+        # bez prijave: 401; zadani korisnik radionica/jastuk
+        assert c.get("/api/jobs").status_code == 401
+        assert c.post("/api/login", json={"username": "radionica", "password": "krivo"}).status_code == 401
+        tok = c.post("/api/login", json={"username": "radionica", "password": "jastuk"}).json()["token"]
+        c.headers["Authorization"] = "Bearer " + tok
+        assert c.get("/api/me").json()["username"] == "radionica"
         yield c
 
 
@@ -172,3 +178,35 @@ def test_rules_and_kroj_export(client):
     ex2 = client.post(f"/api/jobs/{j['job']['id']}/export?page=A4").json()
     assert ex2["files"][0]["name"] == "kroj_1_1_A4.pdf"
     client.put("/api/rules", json={"seam_mm": 10, "page": "A4"})
+
+
+def test_auth_files_and_logout(client):
+    from api import auth
+    auth.set_user("kolega", "tajna")
+    r = client.post("/api/login", json={"username": "kolega", "password": "tajna"}).json()
+    assert r["username"] == "kolega"
+    j = client.post("/api/jobs", json={"boat_name": "Tko"}).json()
+    assert j["job"]["created_by"] == "radionica"
+    # datoteke: bez tokena 401, s tokenom u upitu 200 (linkovi iz preglednika)
+    hdr = client.headers.pop("Authorization")
+    assert client.get("/files/photos/nema.jpg").status_code == 401
+    assert client.get("/files/photos/nema.jpg?token=" + hdr[7:]).status_code == 404
+    client.headers["Authorization"] = hdr
+    assert client.post("/api/logout").json() == {"ok": True}
+    assert client.get("/api/jobs").status_code == 401
+    tok = client.post("/api/login", json={"username": "radionica", "password": "jastuk"}).json()["token"]
+    client.headers["Authorization"] = "Bearer " + tok
+
+
+def test_export_has_nesting(client):
+    j = client.post("/api/jobs", json={"boat_name": "Nest"}).json()
+    for i, z in enumerate(("kokpit", "kokpit", "salon")):
+        client.post(f"/api/jobs/{j['job']['id']}/elements", json={"code": f"E{i}", "zone": z, "thickness_mm": 50,
+                    "outline_mm": [[0, 0], [900, 0], [900, 450], [0, 450]]})
+    ex = client.post(f"/api/jobs/{j['job']['id']}/export").json()
+    names = [f["name"] for f in ex["files"]]
+    assert "nesting_vinil.pdf" in names and "nesting_tkanina.dxf" in names
+    role = {r["material"]: r for r in ex["role"]}
+    assert role["vinil"]["n_parts"] == 6 and role["vinil"]["length_m"] > 2.5 and role["tkanina"]["n_parts"] == 3
+    csv = client.get(f"/files/jobs/{j['job']['id']}/materijal.csv").text
+    assert "rola;vinil;1370" in csv

@@ -180,3 +180,34 @@ def write_pdf(elements: list, path: str, page: str = "A4"):
             pdf.savefig(fig); plt.close(fig)
             for name in ("LICE", "SPUZVA"):
                 tiled_pages(pdf, el, parts[name], page)
+
+
+# --------------------------------------------------------------------------- nesting
+def write_nesting(placements: list, material: str, roll_width: float, length: float, base: str):
+    """Slaganje na rolu: DXF 1:1 (rola kao okvir, dijelovi sa šifrom) i PDF pregled (nije 1:1)."""
+    doc = _new_doc()
+    msp = doc.modelspace()
+    doc.layers.add("ROLA", color=8)
+    doc.layers.add("DIJELOVI", color=1)
+    doc.layers.add("TEKST", color=7)
+    msp.add_lwpolyline([(0, 0), (roll_width, 0), (roll_width, length), (0, length)], format="xy", close=True, dxfattribs={"layer": "ROLA"})
+    msp.add_text(f"ROLA {material} širina {roll_width:.0f} mm, potrebna duljina {length / 1000:.2f} m", height=20, dxfattribs={"layer": "TEKST"}).set_placement((0, length + 30))
+    for p in placements:
+        msp.add_lwpolyline(p["poly"].tolist(), format="xy", close=True, dxfattribs={"layer": "DIJELOVI"})
+        (x0, y0), (x1, y1) = p["bbox"]
+        msp.add_text(f"{p['id']} ({p['rot_deg']}°)", height=min(25, max(8, (y1 - y0) / 6)), dxfattribs={"layer": "TEKST"}).set_placement(
+            ((x0 + x1) / 2, (y0 + y1) / 2), align=ezdxf.enums.TextEntityAlignment.MIDDLE_CENTER)
+    doc.saveas(base + ".dxf")
+    with PdfPages(base + ".pdf") as pdf:
+        fig = plt.figure(figsize=(8.27, 11.69))
+        ax = fig.add_axes([0.08, 0.05, 0.84, 0.88]); ax.set_aspect("equal")
+        ax.add_patch(plt.Rectangle((0, 0), roll_width, length, fill=False, lw=1.2))
+        for p in placements:
+            q = _closed(p["poly"]); ax.plot(q[:, 0], q[:, 1], "k-", lw=0.8)
+            ax.fill(q[:, 0], q[:, 1], color="#cfe3f5", alpha=0.6)
+            (x0, y0), (x1, y1) = p["bbox"]
+            ax.text((x0 + x1) / 2, (y0 + y1) / 2, f"{p['id']}\n{p['rot_deg']}°", ha="center", va="center", fontsize=5)
+        ax.set_xlim(-50, roll_width + 50); ax.set_ylim(-50, length + 50)
+        ax.set_title(f"Nesting · {material} · rola {roll_width:.0f} mm · duljina {length / 1000:.2f} m (pregled, nije 1:1)", fontsize=9)
+        ax.tick_params(labelsize=6); ax.set_xlabel("mm", fontsize=7)
+        pdf.savefig(fig); plt.close(fig)

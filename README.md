@@ -10,7 +10,7 @@ krojeve. Ovo je prva metoda mjerenja iz [`PLAN.md`](PLAN.md) (metoda A); ostatak
 ```bash
 pip install -e ".[test]"          # ili: pip install opencv-python-headless numpy scipy scikit-image shapely ezdxf matplotlib
 python3 -m jastuk_cv fotke/elementi.json --out izlaz
-python3 -m pytest                  # 38 testova, ~60 s (regresija na 4 fotografije, geometrija, markeri, dodaci, krojevi, API)
+python3 -m pytest                  # 43 testa, ~60 s (regresija na 4 fotografije, geometrija, markeri, dodaci, krojevi, nesting, API s prijavom)
 python3 data/seed_boats.py         # provjera startnog popisa brodova
 ```
 
@@ -71,6 +71,22 @@ kontrolnim kvadratom 100 mm na svakoj stranici. `materijal.csv` daje m² tkanine
 Ručne mjere: na ekranu mjerenja treća metoda "Ručne mjere (metar)": pravokutnik, trapez, L oblik ili
 elipsa iz brojeva, sa zaobljenim uglovima; obris ide izravno u nacrt.
 
+## Nesting, prijava, rad bez mreže
+
+**Nesting** (`jastuk_cv/nesting.py`): lice, dno i traka svih elemenata posla slažu se na rolu po
+materijalu (vinil: kokpit i paluba, rotacija slobodna; tkanina: ostalo, samo uzduž; trake uvijek
+uzduž role). Heuristika bottom-left po gabaritima; izlaz `nesting_<materijal>.dxf` (1:1 s rolom)
+i `.pdf` (pregled), potrebna duljina role i iskoristivost u izvozu i u `materijal.csv`.
+
+**Prijava**: dva (ili više) korisnika s punim pravima, `python3 tools/users.py add <ime>`. Bez
+korisnika poslužitelj stvori `radionica` / `jastuk` i upozori u logu; promijeni lozinku. Token vrijedi
+180 dana, čuva se na uređaju. Poslovi i mjerenja pamte tko ih je napravio. Za razvoj bez prijave:
+`JASTUK_NO_AUTH=1`.
+
+**Bez mreže**: ljuska aplikacije radi offline (service worker); zadnje otvoreni poslovi i elementi
+prikazuju se iz predmemorije; uređivanje elemenata i nacrta (PATCH/DELETE) ide u red koji se pošalje
+kad se veza vrati (oznaka "N čeka mrežu" u zaglavlju). Novi posao, fotografije i mjerenje traže vezu.
+
 ## Aplikacija (faza 1): poslužitelj + web sučelje za tablet
 
 ```bash
@@ -86,9 +102,8 @@ elementa), **mjerenje** elementa: s markerima (jedan dodir) ili s folije na mre�
 os x, točka u uzorku; lupa za finu doradu), zatim **uređivanje konture prstom** na ispravljenoj slici
 (zum s dva prsta), prihvat, i **izvoz DXF/PDF** za sve izmjerene elemente posla.
 
-Podaci su u `var/` (SQLite baza, fotografije, izvozi; mapa se mijenja s `JASTUK_VAR`). Ljuska
-aplikacije radi bez mreže (service worker); podaci se za sada šalju odmah, red za offline
-sinkronizaciju je na popisu za fazu 2. Prijava korisnika još ne postoji.
+Podaci su u `var/` (SQLite baza, fotografije, izvozi, korisnici, pravila; mapa se mijenja s
+`JASTUK_VAR`).
 
 Prolaz kroz sučelje s dodirima i snimkama ekrana: `tools/ui_walkthrough.py` (traži pokrenut
 poslužitelj i Playwright).
@@ -122,7 +137,9 @@ osi x** (npr. oznaka "50") i **jedna točka unutar uzorka**. Alternativno se mog
 | `jastuk_cv/markers.py` | metoda B: detekcija ArUco markera, prilagodba ravnine, ispravljanje, segmentacija na dodir, dorada ruba |
 | `jastuk_cv/features.py` | dodaci na elementu: tipovi, geometrija po obrisu (duljina luka), popis materijala |
 | `jastuk_cv/pattern.py` | krojevi: šivaća linija, šav, zarezi, traka, spužva, pravila radionice, popis materijala |
-| `jastuk_cv/kroj_out.py` | krojevi u DXF i PDF 1:1 slijepljen iz A4/A3 stranica |
+| `jastuk_cv/kroj_out.py` | krojevi u DXF i PDF 1:1 slijepljen iz A4/A3 stranica; nesting DXF/PDF |
+| `jastuk_cv/nesting.py` | slaganje dijelova na rolu (skyline, rotacije po materijalu) |
+| `api/auth.py`, `tools/users.py` | prijava korisnika (PBKDF2, tokeni) |
 | `markeri/` | PDF za tisak: 12 ArUco markera 80 mm (A4, 3 str.) i šahovnica za kalibraciju; `tools/make_markers.py` |
 | `jastuk_cv/outputs.py` | DXF/PDF 1:1, offset, trake |
 | `jastuk_cv/cli.py` | naredbeni redak (`python3 -m jastuk_cv`) |

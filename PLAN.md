@@ -206,7 +206,7 @@ Predložak vezan uz varijantu, a ne uz model, štedi nam krive pretpostavke.
 
 - [x] Umjesto wireframea odmah radna verzija (`app/`), jer je jeftinije mijenjati živo sučelje.
 - [x] Skelet PWA: navigacija (poslovi, novi posao, posao, element, mjerenje), service worker za
-      ljusku. **Nije još:** offline red za podatke i prijava korisnika (faza 2).
+      ljusku, predmemorija GET-ova, offline red za PATCH/DELETE, prijava korisnika s tokenom.
 - [x] Editor poligona na canvasu: dodir dodaje točku, povlačenje pomiče, ukloni zadnju, očisti,
       zrcali L↔D, zrcalna kopija elementa. **Nije još:** zaokruživanje ugla i 90° (za obris u mm,
       ne za skicu; ide uz metodu B).
@@ -403,7 +403,8 @@ Akcije:
       duljinama luka, smjer tkanine, tekst u DXF-u, traka s položajem cifa, spužva po pravilu zone.
 - [ ] Trake: rezanje trake na dijelove po uglovima (sada je jedan komad s zarezima); traka s cifom kao
       dvije polovice (sada samo označeno).
-- [ ] Nesting v1 (greedy), prikaz u aplikaciji, ručno pomicanje komada prstom.
+- [x] Nesting v1 (skyline po gabaritima, rotacije po materijalu), DXF/PDF, duljina role u izvozu.
+- [ ] Prikaz nestinga u aplikaciji i ručno pomicanje komada prstom.
 - [x] PDF 1:1 s tilingom na A4/A3 (preklop 10 mm, križići, kontrolni kvadrat 100 mm na svakoj stranici,
       uputa na naslovnoj). Lice i spužva po stranicama, dno = zrcalno lice, traka po tablici zareza.
 - [x] Popis materijala (`materijal.csv`: m² tkanine i spužve, traka, rola). Cjenik i ponuda: kasnije.
@@ -501,7 +502,7 @@ workshop_rules(id, kind, fabric, seam_mm, foam_offset_mm, cover_shrink_pct, roll
 ### Faza 1: baza brodova + odabir + crtanje prstom (3–4 tjedna)
 
 - [x] Seed baze brodova iz CSV-a (automatski pri prvom pokretanju poslužitelja).
-- [x] PWA skelet (bez prijave i offline reda; vidi 5.3).
+- [x] PWA skelet, prijava, offline red (vidi 5.3).
 - [x] Odabir broda (varijante još nisu zaseban entitet; godište i kabine su na modelu).
 - [x] Editor poligona prstom, obrazac elementa, zrcaljenje, zrcalna kopija.
 - [x] Metoda C (ručne mjere): pravokutnik, trapez, L, elipsa sa zaobljenim uglovima, u aplikaciji.
@@ -597,8 +598,10 @@ Još bi dobro došlo, ali ne blokira: s kojeg su broda uzorci u `fotke/` i koji 
    mjerenje → izvoz radi u pregledniku.
 6. ~~Dodaci u nacrtu (cif, kopče, rupe, gumbi…): ekran Nacrt, DXF slojevi, traka, popis.~~ Gotovo.
 8. ~~Krojevi sa šavom i zarezima, PDF 1:1 na A4/A3, pravila radionice, ručne mjere, izbacivanje
-   markera izvan ravnine.~~ Gotovo. Sljedeće: nesting na rolu, prijava dva korisnika, offline red,
-   kalibracija kamere kad stigneš.
+   markera izvan ravnine.~~ Gotovo.
+9. ~~Nesting na rolu, prijava dva korisnika, offline red.~~ Gotovo. Sljedeće: pilot na stvarnim
+   brodovima (faza 5), kalibracija kamere i korekcija za rub ispod ravnine markera, prikaz nestinga
+   u aplikaciji, ponude iz popisa materijala.
 7. ~~Faza 3, metoda B: markeri, PDF za tisak, mjerenje jednim dodirom, ručna korekcija konture.~~
    Gotovo u kodu i na sintetičkoj sceni. Sljedeće: ispiši `markeri/aruco_5x5_80mm_a4.pdf`, slikaj
    S25 Ultrom nekoliko jastuka i ležajeva s markerima i pošalji fotografije; na njima se podešava

@@ -18,7 +18,8 @@ from jastuk_cv.measure import finish_polyline
 from jastuk_cv import features as FT
 from jastuk_cv import pattern as PT
 from jastuk_cv import kroj_out
-from . import db
+from jastuk_cv import nesting as NEST
+from . import auth, db
 from .models import BoatModel, Element, Job, Measurement
 
 log = logging.getLogger("jastuk_api")
@@ -84,8 +85,8 @@ def list_jobs(session: Session = Depends(db.get_session)):
 
 
 @router.post("/jobs")
-def create_job(j: JobIn, session: Session = Depends(db.get_session)):
-    job = Job(**{k: v for k, v in j.model_dump().items() if v is not None})
+def create_job(j: JobIn, session: Session = Depends(db.get_session), user: str = auth.UserDep):
+    job = Job(**{k: v for k, v in j.model_dump().items() if v is not None}, created_by=user)
     session.add(job)
     session.commit()
     session.refresh(job)
@@ -277,7 +278,7 @@ class MeasureIn(BaseModel):
 
 
 @router.post("/elements/{el_id}/measure")
-def measure_element(el_id: int, m: MeasureIn, session: Session = Depends(db.get_session)):
+def measure_element(el_id: int, m: MeasureIn, session: Session = Depends(db.get_session), user: str = auth.UserDep):
     el = session.get(Element, el_id)
     if not el:
         raise HTTPException(404, "element ne postoji")
@@ -299,7 +300,8 @@ def measure_element(el_id: int, m: MeasureIn, session: Session = Depends(db.get_
     # ispravljena slika: 1 px = 1 mm; x_mm = u + 10*xr0, y_mm = -v + 10*yr1 (y papira prema gore)
     rect_to_mm = [[1, 0, 10.0 * res.x_range[0]], [0, -1, 10.0 * res.y_range[1]]]
     meas = Measurement(element_id=el.id, method="grid", photo_id=m.photo_id, params=m.model_dump(),
-                       outline_mm=d["poly_mm"], corners=d["corners"], quality=d["quality"], perimeter_mm=res.perimeter_mm)
+                       outline_mm=d["poly_mm"], corners=d["corners"], quality=d["quality"], perimeter_mm=res.perimeter_mm,
+                       created_by=user)
     session.add(meas)
     session.commit()
     session.refresh(meas)
@@ -319,7 +321,7 @@ class MeasureMarkersIn(BaseModel):
 
 
 @router.post("/elements/{el_id}/measure_markers")
-def measure_element_markers(el_id: int, m: MeasureMarkersIn, session: Session = Depends(db.get_session)):
+def measure_element_markers(el_id: int, m: MeasureMarkersIn, session: Session = Depends(db.get_session), user: str = auth.UserDep):
     """Fotografija odozgo s ArUco markerima + jedan dodir unutar elementa -> obris u mm i ispravljena
     slika (1 px = 1 mm) na kojoj korisnik prstom popravlja konturu."""
     el = session.get(Element, el_id)
@@ -347,7 +349,7 @@ def measure_element_markers(el_id: int, m: MeasureMarkersIn, session: Session = 
     corners_out = [dict(s_start_mm=round(c["s_start"], 1), s_end_mm=round(c["s_end"], 1),
                         s_apex_mm=round(c["s_apex"], 1), turn_deg=round(c["turn_deg"], 1)) for c in corners]
     meas = Measurement(element_id=el.id, method="markers", photo_id=m.photo_id, params=m.model_dump(),
-                       outline_mm=p.tolist(), corners=corners_out, quality=q, perimeter_mm=per)
+                       outline_mm=p.tolist(), corners=corners_out, quality=q, perimeter_mm=per, created_by=user)
     session.add(meas)
     session.commit()
     session.refresh(meas)
@@ -422,10 +424,34 @@ def export_job(job_id: int, page: str = "", session: Session = Depends(db.get_se
     kroj_out.write_dxf(kroj_elems, str(out / "kroj_1_1.dxf"))
     kroj_out.write_pdf(kroj_elems, str(out / f"kroj_1_1_{page}.pdf"), page=page)
     mat = [dict(element=k["layer"], **k["kroj"]["bom"]) for k in kroj_elems]
+    # ---- nesting po materijalu: lice, dno, traka svakog elementa na rolu
+    role, nest_names = [], []
+    for material in sorted({k["kroj"]["material"] for k in kroj_elems}):
+        items = []
+        for k in kroj_elems:
+            if k["kroj"]["material"] != material:
+                continue
+            free = material == "vinil"
+            for part in k["kroj"]["parts"]:
+                if part["name"] in ("LICE", "DNO", "TRAKA"):
+                    items.append(dict(id=f"{k['layer']} {part['name']}", poly=part["poly"], rot_free=free, kind=part["name"]))
+        width = float(rules["roll_width_mm"].get(material, 1370))
+        try:
+            placements, length = NEST.nest(items, width, float(rules.get("gap_mm", 15)))
+        except ValueError as ex:
+            role.append(dict(material=material, roll_width_mm=width, error=str(ex)))
+            continue
+        base = out / f"nesting_{material}"
+        kroj_out.write_nesting(placements, material, width, length, str(base))
+        nest_names += [f"nesting_{material}.pdf", f"nesting_{material}.dxf"]
+        role.append(dict(material=material, roll_width_mm=width, length_m=round(length / 1000, 2),
+                         utilization_pct=round(100 * NEST.utilization(placements, width, length), 1), n_parts=len(placements)))
     (out / "materijal.csv").write_text(
         "element;materijal;tkanina_m2;rola_mm;traka_visina_mm;traka_duljina_mm;spuzva_m2;spuzva_debljina_mm;zareza\n"
-        + "".join(f"{m['element']};{m['material']};{m['fabric_m2']};{m['roll_width_mm']};{m['strip_height_mm']};{m['strip_length_mm']};{m['foam_m2']};{m['foam_thickness_mm']};{m['n_notches']}\n" for m in mat),
+        + "".join(f"{m['element']};{m['material']};{m['fabric_m2']};{m['roll_width_mm']};{m['strip_height_mm']};{m['strip_length_mm']};{m['foam_m2']};{m['foam_thickness_mm']};{m['n_notches']}\n" for m in mat)
+        + "\nrola;materijal;sirina_mm;duljina_m;iskoristivost_pct\n"
+        + "".join(f"rola;{r['material']};{r['roll_width_mm']};{r.get('length_m', '')};{r.get('utilization_pct', '')}\n" for r in role),
         encoding="utf-8")
-    names = [f"kroj_1_1_{page}.pdf", "kroj_1_1.dxf", "materijal.csv", "dodaci.csv", "elementi_1_1.dxf", "elementi_1_1.pdf",
+    names = [f"kroj_1_1_{page}.pdf", "kroj_1_1.dxf"] + nest_names + ["materijal.csv", "dodaci.csv", "elementi_1_1.dxf", "elementi_1_1.pdf",
              "elementi_traka_offset.dxf", "elementi_traka_offset.pdf", "konture_mm.json"]
-    return dict(files=[dict(name=n, url=f"/files/jobs/{job_id}/{n}") for n in names], n_elements=len(elems), page=page, materijal=mat)
+    return dict(files=[dict(name=n, url=f"/files/jobs/{job_id}/{n}") for n in names], n_elements=len(elems), page=page, materijal=mat, role=role)

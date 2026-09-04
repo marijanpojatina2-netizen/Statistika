@@ -23,6 +23,8 @@ with sync_playwright() as p:
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
 
     page.goto(BASE + "/#/")
+    page.wait_for_selector("#lu")                       # prijava (zadani korisnik radionica/jastuk)
+    page.fill("#lu", "radionica"); page.fill("#lp", "jastuk"); page.click("#lb")
     page.wait_for_selector("text=Poslovi")
     page.screenshot(path=f"{OUT}/01_poslovi.png")
 
@@ -185,6 +187,21 @@ with sync_playwright() as p:
     page.goto(BASE + "/#/pravila"); page.wait_for_selector("#seam")
     assert page.input_value("#seam") == "12"
     page.fill("#seam", "10"); page.click("#save"); page.wait_for_selector("text=Poslovi")
+    # ---- offline: uređivanje elementa bez mreže ide u red, šalje se kad se veza vrati
+    page.goto(BASE + "/#/posao/1"); page.wait_for_selector("#c")
+    page.click("text=NASLON RUCNO >> xpath=ancestor::tr >> text=Uredi")
+    page.wait_for_selector("#th")
+    ctx.set_offline(True)
+    page.fill("#th", "70"); page.click("#save")
+    page.wait_for_selector("#queue:not([hidden])")
+    assert "1 čeka" in page.inner_text("#queue")
+    page.wait_for_timeout(500)
+    page.screenshot(path=f"{OUT}/14_offline_red.png")
+    ctx.set_offline(False)
+    page.goto(BASE + "/#/"); page.wait_for_selector("text=Poslovi")      # navigacija šalje red (i interval svakih 10 s)
+    page.wait_for_selector("#queue[hidden]", state="attached", timeout=20000)
+    page.goto(BASE + "/#/posao/1"); page.wait_for_selector("text=70 mm")
+    print("OFFLINE RED: poslano nakon povratka mreže ✓")
     print("JS GREŠKE na kraju:", errors or "nema")
     b.close()
     sys.exit(0)

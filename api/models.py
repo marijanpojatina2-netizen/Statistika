@@ -33,6 +33,7 @@ class Job(SQLModel, table=True):
     marina: str = ""
     notes: str = ""
     status: str = "aktivan"         # aktivan | isporučen | arhiva
+    created_by: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -67,4 +68,5 @@ class Measurement(SQLModel, table=True):
     corners: Optional[list] = Field(default=None, sa_column=Column(JSON))
     quality: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     perimeter_mm: float = 0.0
+    created_by: str = ""
     created_at: datetime = Field(default_factory=datetime.utcnow)

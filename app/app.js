@@ -10,16 +10,61 @@ const KINDS = ["sjedalo", "naslon", "madrac", "lezaj", "ostalo"];
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 // ------------------------------------------------------------------ pomoćno
-async function api(path, opts = {}) {
+// ---- prijava (token u localStorage), offline red (PATCH/DELETE čekaju mrežu), predmemorija GET-ova
+const store = { get: k => { try { return JSON.parse(localStorage.getItem(k)); } catch (_) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} } };
+const token = () => store.get("token");
+const fileUrl = u => u + (u.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token() || "");
+let queue = store.get("queue") || [];
+function queueBadge() { let b = $("#queue"); if (!b) { b = document.createElement("span"); b.id = "queue"; b.className = "chip"; b.style.background = "var(--warn)"; $("#top").insertBefore(b, $("#net")); } b.hidden = !queue.length; b.textContent = `${queue.length} čeka mrežu`; }
+async function flushQueue() {
+  if (!navigator.onLine || !queue.length) return;
+  const q = queue.slice(); queue = []; store.set("queue", queue); queueBadge();
+  for (const item of q) {
+    try { await api(item.path, { method: item.method, body: item.body }, { noQueue: true }); }
+    catch (e) { if (!navigator.onLine || /Failed to fetch|NetworkError|Nema veze/.test(e.message)) { queue.push(item); } else toast(`Nije prošlo (${item.method} ${item.path}): ${e.message}`, 6000); }
+  }
+  store.set("queue", queue); queueBadge();
+  if (q.length && !queue.length) toast("Promjene s terena poslane");
+}
+window.addEventListener("online", () => { setNet(); flushQueue(); });
+setInterval(() => { if (queue.length && navigator.onLine) flushQueue(); }, 10000);
+async function api(path, opts = {}, flags = {}) {
   const o = { headers: {}, ...opts };
+  const method = (o.method || "GET").toUpperCase();
+  if (token()) o.headers["Authorization"] = "Bearer " + token();
   if (o.body && !(o.body instanceof FormData)) { o.headers["Content-Type"] = "application/json"; o.body = JSON.stringify(o.body); }
-  const r = await fetch("/api" + path, o);
+  let r;
+  try { r = await fetch("/api" + path, o); }
+  catch (e) {
+    if (method === "GET") { const c = store.get("cache:" + path); if (c) { toast("Bez mreže: prikazujem zadnje poznato stanje", 2000); return c; } }
+    if ((method === "PATCH" || method === "DELETE") && !flags.noQueue) {
+      queue.push({ path, method, body: opts.body, t: Date.now() }); store.set("queue", queue); queueBadge();
+      toast("Bez mreže: promjena je u redu i šalje se kad se veza vrati", 3000);
+      return opts.body && typeof opts.body === "object" ? { ...opts.body, _queued: true } : { ok: true, _queued: true };
+    }
+    throw new Error("Nema veze s poslužiteljem (" + e.message + ")");
+  }
+  if (r.status === 401 && path !== "/login") { store.set("token", null); showLogin(); throw new Error("prijava je potrebna"); }
   if (!r.ok) {
     let msg = r.statusText;
     try { const j = await r.json(); msg = j.detail || JSON.stringify(j); } catch (_) {}
     throw new Error(msg);
   }
-  return r.json();
+  const data = await r.json();
+  if (method === "GET") store.set("cache:" + path, data);
+  return data;
+}
+function showLogin() {
+  crumb.textContent = "prijava";
+  view.innerHTML = `<div class="card" style="max-width:420px;margin:40px auto"><h1>Prijava</h1>
+    <label>Korisničko ime</label><input id="lu" autocomplete="username">
+    <label style="margin-top:8px">Lozinka</label><input id="lp" type="password" autocomplete="current-password">
+    <div class="tools"><button class="primary" id="lb">Prijavi se</button></div><p class="muted small" id="le"></p></div>`;
+  const go = async () => {
+    try { const r = await api("/login", { method: "POST", body: { username: $("#lu").value, password: $("#lp").value } }); store.set("token", r.token); store.set("user", r.username); route(); }
+    catch (e) { $("#le").textContent = e.message; }
+  };
+  $("#lb").onclick = go; $("#lp").onkeydown = ev => { if (ev.key === "Enter") go(); };
 }
 let toastT;
 function toast(msg, ms = 2600) {
@@ -158,6 +203,8 @@ const routes = [
 ];
 async function route() {
   const h = location.hash || "#/";
+  if (!token()) { showLogin(); return; }
+  queueBadge(); flushQueue();
   for (const [re, fn] of routes) {
     const m = h.match(re);
     if (m) {
@@ -176,13 +223,14 @@ async function jobsView() {
   crumb.textContent = "poslovi";
   const jobs = await api("/jobs");
   view.innerHTML = `
-    <div class="row"><h1 class="grow">Poslovi</h1><a class="btn" href="#/pravila">⚙ Pravila radionice</a><a class="btn primary" href="#/novi">+ Novi posao</a></div>
+    <div class="row"><h1 class="grow">Poslovi <span class="muted small">${esc(store.get("user") || "")}</span></h1><a class="btn" href="#/pravila">⚙ Pravila radionice</a><button id="logout">Odjava</button><a class="btn primary" href="#/novi">+ Novi posao</a></div>
     <div class="list">${jobs.map(j => `
       <a class="item" href="#/posao/${j.job.id}">
         <div class="grow"><div class="t">${esc(j.job.boat_name || boatLabel(j.boat))}</div>
         <div class="s">${esc(boatLabel(j.boat))} · ${esc(j.job.customer)} ${j.job.marina ? "· " + esc(j.job.marina) : ""}</div></div>
         <span class="chip">${j.n_elements} el.</span></a>`).join("") || `<p class="muted">Još nema poslova.</p>`}
     </div>`;
+  $("#logout").onclick = async () => { try { await api("/logout", { method: "POST" }); } catch (_) {} store.set("token", null); store.set("user", null); showLogin(); };
 }
 
 async function newJobView() {
@@ -290,8 +338,8 @@ async function jobView(id) {
     $("#exp").disabled = true;
     try {
       const r = await api(`/jobs/${id}/export?page=${$("#page").value}`, { method: "POST" });
-      $("#files").innerHTML = r.files.map(f => `<a href="${f.url}" target="_blank">${f.name}</a>`).join("")
-        + `<table style="margin-top:8px"><tr><th>element</th><th>materijal</th><th>tkanina m²</th><th>traka</th><th>spužva m²</th></tr>${r.materijal.map(m => `<tr><td>${esc(m.element)}</td><td>${m.material}</td><td>${m.fabric_m2}</td><td>${m.strip_height_mm} × ${m.strip_length_mm}</td><td>${m.foam_m2} × ${m.foam_thickness_mm} mm</td></tr>`).join("")}</table><p class="muted small">${r.n_elements} elemenata</p>`;
+      $("#files").innerHTML = r.files.map(f => `<a href="${fileUrl(f.url)}" target="_blank">${f.name}</a>`).join("")
+        + `<table style="margin-top:8px"><tr><th>element</th><th>materijal</th><th>tkanina m²</th><th>traka</th><th>spužva m²</th></tr>${r.materijal.map(m => `<tr><td>${esc(m.element)}</td><td>${m.material}</td><td>${m.fabric_m2}</td><td>${m.strip_height_mm} × ${m.strip_length_mm}</td><td>${m.foam_m2} × ${m.foam_thickness_mm} mm</td></tr>`).join("")}</table>${r.role && r.role.length ? `<p class="small">${r.role.map(x => x.error ? `⚠️ ${x.material}: ${esc(x.error)}` : `rola ${x.material} ${x.roll_width_mm} mm: <b>${x.length_m} m</b> (${x.n_parts} komada, iskoristivost ${x.utilization_pct} %)`).join("<br>")}</p>` : ""}<p class="muted small">${r.n_elements} elemenata</p>`;
     } catch (e) { toast(e.message); } finally { $("#exp").disabled = false; }
   };
   $("#del").onclick = async () => { if (confirm("Obrisati posao i sve elemente?")) { await api(`/jobs/${id}`, { method: "DELETE" }); location.hash = "#/"; } };
@@ -577,7 +625,7 @@ async function measureView(id) {
     $("#up").innerHTML = `<span class="spinner"></span> šaljem fotografiju…`;
     const fd = new FormData(); fd.append("file", f);
     try { photo = await api("/photos", { method: "POST", body: fd }); } catch (er) { toast(er.message); $("#up").textContent = ""; return; }
-    img = new Image(); img.src = photo.preview_url; await img.decode();
+    img = new Image(); img.src = fileUrl(photo.preview_url); await img.decode();
     $("#up").textContent = `${photo.width} × ${photo.height} px`;
     $("#work").hidden = false;
     startTaps();
@@ -591,7 +639,7 @@ async function measureView(id) {
         ? await api(`/elements/${e.id}/measure_markers`, { method: "POST", body: { photo_id: photo.photo_id, seed_px: pts[0], marker_mm: +$("#mk").value || 80 } })
         : await api(`/elements/${e.id}/measure`, { method: "POST", body: { photo_id: photo.photo_id, origin_px: pts[0], x_axis_px: pts[1], seed_px: pts[2], square_corner_cm: $("#sq").checked ? [0, 0] : null } });
     } catch (er) { toast(er.message, 8000); uiTaps(); return; }
-    rectImg = new Image(); rectImg.src = result.rect_url; await rectImg.decode();
+    rectImg = new Image(); rectImg.src = fileUrl(result.rect_url); await rectImg.decode();
     startEdit();
   };
 
