@@ -149,3 +149,26 @@ def test_features_api(client):
     assert "SJEDALO;cif (patentni zatvarač);0.8;m" in csv and "SJEDALO;kopča;2;kom" in csv
     js = client.get(f"/files/jobs/{j['job']['id']}/konture_mm.json").json()
     assert js[0]["dodaci"]["kopca"] == 2 and js[0]["dodaci"]["zip"] == 800
+
+
+def test_rules_and_kroj_export(client):
+    r = client.get("/api/rules").json()
+    assert r["seam_mm"] == 10 and r["page"] == "A4"
+    r2 = client.put("/api/rules", json={"seam_mm": 12, "page": "A3"}).json()
+    assert r2["seam_mm"] == 12 and r2["page"] == "A3" and r2["foam_offset_mm"]["default"] == -5
+    assert client.get("/api/rules").json()["seam_mm"] == 12
+    j = client.post("/api/jobs", json={"boat_name": "Kroj"}).json()
+    client.post(f"/api/jobs/{j['job']['id']}/elements", json={"code": "SJEDALO", "zone": "kokpit", "thickness_mm": 60,
+                "outline_mm": [[0, 0], [800, 0], [800, 400], [0, 400]], "features": [{"type": "zip", "s0": 50, "s1": 750}]})
+    ex = client.post(f"/api/jobs/{j['job']['id']}/export").json()
+    names = [f["name"] for f in ex["files"]]
+    assert names[0] == "kroj_1_1_A3.pdf" and "kroj_1_1.dxf" in names and "materijal.csv" in names and ex["page"] == "A3"
+    assert ex["materijal"][0]["strip_length_mm"] == 2400 * 0.98 + 24 or ex["materijal"][0]["material"] == "vinil"
+    for n in ("kroj_1_1_A3.pdf", "kroj_1_1.dxf", "materijal.csv"):
+        resp = client.get(f"/files/jobs/{j['job']['id']}/{n}")
+        assert resp.status_code == 200 and len(resp.content) > 100
+    csv = client.get(f"/files/jobs/{j['job']['id']}/materijal.csv").text
+    assert csv.startswith("element;materijal;") and "SJEDALO;vinil;" in csv
+    ex2 = client.post(f"/api/jobs/{j['job']['id']}/export?page=A4").json()
+    assert ex2["files"][0]["name"] == "kroj_1_1_A4.pdf"
+    client.put("/api/rules", json={"seam_mm": 10, "page": "A4"})

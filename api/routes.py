@@ -16,6 +16,8 @@ from jastuk_cv import measure_grid, outputs
 from jastuk_cv.markers import fit_plane, rectify_plane, segment_seed, markers_mask
 from jastuk_cv.measure import finish_polyline
 from jastuk_cv import features as FT
+from jastuk_cv import pattern as PT
+from jastuk_cv import kroj_out
 from . import db
 from .models import BoatModel, Element, Job, Measurement
 
@@ -135,6 +137,24 @@ class ElementIn(BaseModel):
     features: Optional[list] = None
     status: Optional[str] = None
     method: Optional[str] = None
+
+
+# --------------------------------------------------------------------------- pravila radionice
+def load_rules() -> dict:
+    f = db.VAR / "rules.json"
+    return PT.merge_rules(json.loads(f.read_text(encoding="utf-8")) if f.exists() else None)
+
+
+@router.get("/rules")
+def get_rules():
+    return load_rules()
+
+
+@router.put("/rules")
+def put_rules(rules: dict):
+    merged = PT.merge_rules(rules)
+    (db.VAR / "rules.json").write_text(json.dumps(merged, ensure_ascii=False, indent=1), encoding="utf-8")
+    return merged
 
 
 @router.get("/feature_types")
@@ -367,7 +387,7 @@ def accept_measurement(el_id: int, a: AcceptIn, session: Session = Depends(db.ge
 
 # --------------------------------------------------------------------------- izvoz
 @router.post("/jobs/{job_id}/export")
-def export_job(job_id: int, session: Session = Depends(db.get_session)):
+def export_job(job_id: int, page: str = "", session: Session = Depends(db.get_session)):
     job = session.get(Job, job_id)
     if not job:
         raise HTTPException(404, "posao ne postoji")
@@ -392,5 +412,20 @@ def export_job(job_id: int, session: Session = Depends(db.get_session)):
     (out / "konture_mm.json").write_text(json.dumps(js, ensure_ascii=False, indent=1), encoding="utf-8")
     rows = outputs.features_table(results)
     (out / "dodaci.csv").write_text("element;dodatak;kolicina;jedinica\n" + "".join(f"{a};{b};{c};{d}\n" for a, b, c, d in rows), encoding="utf-8")
-    names = ["elementi_1_1.dxf", "elementi_1_1.pdf", "elementi_traka_offset.dxf", "elementi_traka_offset.pdf", "konture_mm.json", "dodaci.csv"]
-    return dict(files=[dict(name=n, url=f"/files/jobs/{job_id}/{n}") for n in names], n_elements=len(elems))
+    # ---- krojevi: lice, dno, traka, spužva sa šavom i zarezima po pravilima radionice
+    rules = load_rules()
+    page = page if page in PT.PAGES else rules.get("page", "A4")
+    kroj_elems = []
+    for e, r in zip(elems, results):
+        k = PT.make_parts(r["poly_mm"], e.thickness_mm, e.features or [], rules, zone=e.zone, code=r["layer"])
+        kroj_elems.append(dict(layer=r["layer"], kroj=k))
+    kroj_out.write_dxf(kroj_elems, str(out / "kroj_1_1.dxf"))
+    kroj_out.write_pdf(kroj_elems, str(out / f"kroj_1_1_{page}.pdf"), page=page)
+    mat = [dict(element=k["layer"], **k["kroj"]["bom"]) for k in kroj_elems]
+    (out / "materijal.csv").write_text(
+        "element;materijal;tkanina_m2;rola_mm;traka_visina_mm;traka_duljina_mm;spuzva_m2;spuzva_debljina_mm;zareza\n"
+        + "".join(f"{m['element']};{m['material']};{m['fabric_m2']};{m['roll_width_mm']};{m['strip_height_mm']};{m['strip_length_mm']};{m['foam_m2']};{m['foam_thickness_mm']};{m['n_notches']}\n" for m in mat),
+        encoding="utf-8")
+    names = [f"kroj_1_1_{page}.pdf", "kroj_1_1.dxf", "materijal.csv", "dodaci.csv", "elementi_1_1.dxf", "elementi_1_1.pdf",
+             "elementi_traka_offset.dxf", "elementi_traka_offset.pdf", "konture_mm.json"]
+    return dict(files=[dict(name=n, url=f"/files/jobs/{job_id}/{n}") for n in names], n_elements=len(elems), page=page, materijal=mat)

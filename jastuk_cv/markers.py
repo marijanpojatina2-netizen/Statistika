@@ -37,6 +37,8 @@ class PlaneFit:
     rms_mm: float                  # RMS ostatak uglova markera nakon prilagodbe (mm)
     max_mm: float
     mm_per_px: float               # približno mjerilo u sredini markera (za procjenu rezolucije)
+    dropped_ids: list = dataclasses.field(default_factory=list)   # markeri izbačeni jer nisu u ravnini s ostalima
+    per_marker_rms_mm: dict = dataclasses.field(default_factory=dict)
 
     def img_to_mm(self, pts_px) -> np.ndarray:
         return cv2.perspectiveTransform(np.asarray(pts_px, np.float64).reshape(-1, 1, 2), self.H_img_to_mm).reshape(-1, 2)
@@ -46,7 +48,9 @@ class PlaneFit:
 
     def quality(self) -> dict:
         return dict(n_markers=len(self.ids), marker_ids=[int(i) for i in self.ids], fit_rms_mm=round(self.rms_mm, 2),
-                    fit_max_mm=round(self.max_mm, 2), mm_per_px=round(self.mm_per_px, 3))
+                    fit_max_mm=round(self.max_mm, 2), mm_per_px=round(self.mm_per_px, 3),
+                    dropped_ids=[int(i) for i in self.dropped_ids],
+                    per_marker_rms_mm={int(k): round(v, 2) for k, v in self.per_marker_rms_mm.items()})
 
 
 # --------------------------------------------------------------------------- detekcija
@@ -206,10 +210,29 @@ def _pose_square(x, y, th, marker_mm):
     return _square(marker_mm) @ np.array([[c, s], [-s, c]]) + [x, y]
 
 
-def fit_plane(img_bgr: np.ndarray, marker_mm: float = 80.0, dict_name: str = "DICT_5X5_50", min_markers: int = 2) -> PlaneFit:
+def fit_plane(img_bgr: np.ndarray, marker_mm: float = 80.0, dict_name: str = "DICT_5X5_50", min_markers: int = 2,
+              outlier_rms_mm: float = 1.5) -> PlaneFit:
+    """Detekcija + prilagodba ravnine. Marker koji ne leži u ravnini s ostalima (npr. jedan na ležaju, ostali
+    na jastuku) ima velik ostatak; dok ih ima bar 3, najgori s ostatkom > outlier_rms_mm se izbacuje i
+    prilagodba ponavlja. Izbačeni ID-ovi su u rezultatu (dropped_ids) za upozorenje korisniku."""
     ids, corners = detect_markers(img_bgr, dict_name)
     if len(ids) < min_markers:
         raise RuntimeError(f"premalo markera: nađeno {len(ids)}, treba bar {min_markers}")
+    dropped = []
+    while True:
+        fit = _fit_markers(ids, corners, marker_mm)
+        worst = max(fit.per_marker_rms_mm, key=fit.per_marker_rms_mm.get)
+        if len(ids) >= 3 and fit.per_marker_rms_mm[worst] > outlier_rms_mm:
+            log.info("  marker %s izbačen: ostatak %.2f mm (nije u ravnini s ostalima)", worst, fit.per_marker_rms_mm[worst])
+            dropped.append(int(worst))
+            keep = ids != worst
+            ids, corners = ids[keep], corners[keep]
+            continue
+        fit.dropped_ids = dropped
+        return fit
+
+
+def _fit_markers(ids, corners, marker_mm: float) -> PlaneFit:
     n = len(ids)
     # ---- početna homografija: iz svih markera odjednom uz grubi položaj iz najvećeg markera
     areas = [cv2.contourArea(c.astype(np.float32)) for c in corners]
@@ -242,10 +265,12 @@ def fit_plane(img_bgr: np.ndarray, marker_mm: float = 80.0, dict_name: str = "DI
     ctr = allc.mean(0)
     e = _apply_h(H, np.array([ctr, ctr + [1, 0], ctr + [0, 1]]))
     mm_per_px = float((np.hypot(*(e[1] - e[0])) + np.hypot(*(e[2] - e[0]))) / 2)
+    per = {int(ids[k]): float(np.sqrt((d[4 * k:4 * k + 4] ** 2).mean())) for k in range(n)}
     log.info("  markeri: %d (%s), ostatak RMS %.2f mm, max %.2f mm, %.3f mm/px", n, list(ids),
              np.sqrt((d ** 2).mean()), d.max(), mm_per_px)
     return PlaneFit(H_img_to_mm=H, ids=list(ids), corners_px=corners, poses_mm=poses,
-                    rms_mm=float(np.sqrt((d ** 2).mean())), max_mm=float(d.max()), mm_per_px=mm_per_px)
+                    rms_mm=float(np.sqrt((d ** 2).mean())), max_mm=float(d.max()), mm_per_px=mm_per_px,
+                    per_marker_rms_mm=per)
 
 
 # --------------------------------------------------------------------------- ispravljanje

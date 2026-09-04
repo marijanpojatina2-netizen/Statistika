@@ -81,3 +81,27 @@ def test_marker_pdf_prints_true_size():
             side = np.mean([np.hypot(*(c[(k + 1) % 4] - c[k])) for k in range(4)])
             assert side == pytest.approx(80 / 25.4 * dpi, rel=0.005)
     assert sorted(seen) == list(range(12))
+
+
+def test_outlier_marker_dropped(scene, monkeypatch):
+    """Jedan marker 'podignut' (u slici veći za 8 %: bliže kameri, tj. na jastuku dok su ostali na
+    ležaju) mora biti izbačen, a ravnina iz ostalih ostaje točna."""
+    import jastuk_cv.markers as mk
+    photo, truth, seed_px, Hp, S = scene
+    orig = mk.detect_markers
+
+    def fake_detect(img, dict_name="DICT_5X5_50"):
+        ids, corners = orig(img, dict_name)
+        k = list(ids).index(4)
+        c = corners[k]
+        corners[k] = c.mean(0) + (c - c.mean(0)) * 1.08
+        return ids, corners
+    monkeypatch.setattr(mk, "detect_markers", fake_detect)
+    pl = mk.fit_plane(photo, 80.0)
+    assert pl.dropped_ids == [4] and 4 not in pl.ids and len(pl.ids) == 5
+    assert pl.rms_mm < 0.6
+    t = truth_in_plane(pl, truth, Hp, S)
+    per_true = np.hypot(*(truth[1:] - truth[:-1]).T).sum()
+    assert abs(np.hypot(*(t[1:] - t[:-1]).T).sum() / per_true - 1) < 0.003
+    q = pl.quality()
+    assert q["dropped_ids"] == [4] and set(q["per_marker_rms_mm"]) == set(pl.ids)

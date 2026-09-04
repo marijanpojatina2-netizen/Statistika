@@ -10,7 +10,7 @@ krojeve. Ovo je prva metoda mjerenja iz [`PLAN.md`](PLAN.md) (metoda A); ostatak
 ```bash
 pip install -e ".[test]"          # ili: pip install opencv-python-headless numpy scipy scikit-image shapely ezdxf matplotlib
 python3 -m jastuk_cv fotke/elementi.json --out izlaz
-python3 -m pytest                  # 32 testa, ~35 s (regresija na 4 fotografije, geometrija, markeri na sintetičkoj sceni, dodaci, API)
+python3 -m pytest                  # 38 testova, ~60 s (regresija na 4 fotografije, geometrija, markeri, dodaci, krojevi, API)
 python3 data/seed_boats.py         # provjera startnog popisa brodova
 ```
 
@@ -51,6 +51,25 @@ U izvozu: svaki tip dodatka je na svom DXF sloju (`<ELEMENT> ZIP`, `… KOPCA`, 
 i natpisom, cif i keder su označeni i **na traci** (početak i kraj po duljini luka), PDF ima stranicu s
 popisom dodataka, a `dodaci.csv` daje količine po elementu (metri cifa/kedera/čička, komadi kopči,
 rupa, gumba) za nabavu.
+
+## Krojevi: lice, dno, traka, spužva, šav, zarezi, PDF 1:1 na A4/A3
+
+Iz obrisa gotovog jastuka, debljine i dodataka, `jastuk_cv/pattern.py` radi krojeve po **pravilima
+radionice** (u aplikaciji pod ⚙, spremljena u `var/rules.json`): šivaća linija = obris umanjen za
+skupljanje navlake (vinil 2 %, tkanina 1 %), lice = šivaća linija + šav 10 mm, dno = zrcalno lice,
+traka = opseg šivaće linije + 2 šava × (debljina + 2 šava), spužva = izmjereni obris −3 mm (kokpit)
+ili −5 mm (unutrašnjost) po strani. **Zarezi** su na istim duljinama luka na licu, dnu i traci:
+početak, počeci i krajevi uglova, početak i kraj cifa, i svakih 300 mm po ravnim dijelovima.
+
+Izvoz posla (`jastuk_cv/kroj_out.py`): `kroj_1_1.dxf` (svi dijelovi, slojevi `<ELEMENT> LICE/DNO/
+TRAKA/SPUZVA/ZAREZI/TEKST`, šivaća linija crtkano) i **`kroj_1_1_A4.pdf` ili `_A3.pdf`**: naslovna s
+količinama, pregled dijelova po elementu, tablica zareza za traku (traka se crta ravnalom po mjerama),
+pa **lice i spužva 1:1 razrezani na stranice** s preklopom 10 mm, križićima za lijepljenje i
+kontrolnim kvadratom 100 mm na svakoj stranici. `materijal.csv` daje m² tkanine i spužve, mjere trake i
+širinu role po elementu.
+
+Ručne mjere: na ekranu mjerenja treća metoda "Ručne mjere (metar)": pravokutnik, trapez, L oblik ili
+elipsa iz brojeva, sa zaobljenim uglovima; obris ide izravno u nacrt.
 
 ## Aplikacija (faza 1): poslužitelj + web sučelje za tablet
 
@@ -102,6 +121,8 @@ osi x** (npr. oznaka "50") i **jedna točka unutar uzorka**. Alternativno se mog
 | `jastuk_cv/measure.py` | javni API `measure_grid`, `GridMeasurement`, izravnavanje kuta na 90° |
 | `jastuk_cv/markers.py` | metoda B: detekcija ArUco markera, prilagodba ravnine, ispravljanje, segmentacija na dodir, dorada ruba |
 | `jastuk_cv/features.py` | dodaci na elementu: tipovi, geometrija po obrisu (duljina luka), popis materijala |
+| `jastuk_cv/pattern.py` | krojevi: šivaća linija, šav, zarezi, traka, spužva, pravila radionice, popis materijala |
+| `jastuk_cv/kroj_out.py` | krojevi u DXF i PDF 1:1 slijepljen iz A4/A3 stranica |
 | `markeri/` | PDF za tisak: 12 ArUco markera 80 mm (A4, 3 str.) i šahovnica za kalibraciju; `tools/make_markers.py` |
 | `jastuk_cv/outputs.py` | DXF/PDF 1:1, offset, trake |
 | `jastuk_cv/cli.py` | naredbeni redak (`python3 -m jastuk_cv`) |
@@ -123,6 +144,7 @@ osi x** (npr. oznaka "50") i **jedna točka unutar uzorka**. Alternativno se mog
 | `elementi_traka_offset.pdf` | stranica po elementu: offset + traka s oznakama |
 | `konture_mm.json` | polilinije (mm), opseg, gabarit, položaji uglova, ocjena kvalitete, dodaci |
 | `dodaci.csv` | (izvoz posla) količine dodataka po elementu |
+| `kroj_1_1.dxf`, `kroj_1_1_A4.pdf`, `materijal.csv` | (izvoz posla) krojevi i materijal, vidi gore |
 | `kontrola/*_ispravljeno_kontura.png` | ispravljena fotografija (1 px = 1 mm) s mrežom, detektiranim presjecištima i konturom |
 | `kontrola/*_detekcija_mreze.png` | original s detektiranim linijama mreže, presjecištima i konturom |
 

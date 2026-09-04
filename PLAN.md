@@ -310,6 +310,8 @@ Akcije:
       kartice markera isključene. MobileSAM ostaje opcija ako klasika zakaže na stvarnim jastucima.
 - [x] Ručna korekcija konture prstom na ispravljenoj slici (pomakni, dodaj, obriši, izravnaj
       između dvije točke, poništi, zum s dva prsta). Vrijedi za obje metode.
+- [x] Marker koji nije u ravnini s ostalima se izbacuje (ostatak > 1,5 mm, dok ih ima bar 3) uz
+      upozorenje na ekranu.
 - [ ] Živi pomoćnik za snimanje (nagib iz žiroskopa, prepoznavanje markera na tabletu u JS-u
       preko OpenCV.js, samo da kaže "svi markeri vidljivi").
 - [ ] Laboratorijski test: ploča 2 × 1 m s poznatim oblicima; izmjeriti grešku u 30 fotografija,
@@ -397,14 +399,14 @@ Za svaki element radionica treba:
 
 Akcije:
 - [x] Dodaci u `outputs.py`: slojevi, simboli, natpisi, oznake na traci, popis dodataka u PDF-u i CSV-u.
-- [ ] Proširiti `outputs.py`: dodatak za šav po tipu, zarezi, smjer tkanine, tekst u DXF-u.
-- [ ] Trake: podjela po uglovima s tolerancijom, otvor za patent, oznake na traci.
-- [ ] Spužva: zasebni sloj i list.
+- [x] Krojevi (`pattern.py`, `kroj_out.py`): šav, skupljanje navlake, zarezi na licu/dnu/traci na istim
+      duljinama luka, smjer tkanine, tekst u DXF-u, traka s položajem cifa, spužva po pravilu zone.
+- [ ] Trake: rezanje trake na dijelove po uglovima (sada je jedan komad s zarezima); traka s cifom kao
+      dvije polovice (sada samo označeno).
 - [ ] Nesting v1 (greedy), prikaz u aplikaciji, ručno pomicanje komada prstom.
-- [ ] PDF 1:1 s tilingom na A4/A3 (oznake preklopa, križići za lijepljenje, kontrolni kvadrat
-      100 mm na svakoj stranici; ispis u "stvarnoj veličini" bez skaliranja, uputa u PDF-u).
-      Ovo je prvi izlaz koji se radi, jer bez plotera je to jedini put do stola za krojenje.
-- [ ] Popis materijala i cjenik po m² kao temelj za ponudu.
+- [x] PDF 1:1 s tilingom na A4/A3 (preklop 10 mm, križići, kontrolni kvadrat 100 mm na svakoj stranici,
+      uputa na naslovnoj). Lice i spužva po stranicama, dno = zrcalno lice, traka po tablici zareza.
+- [x] Popis materijala (`materijal.csv`: m² tkanine i spužve, traka, rola). Cjenik i ponuda: kasnije.
 
 ### 8.4 Pravila radionice: početne vrijednosti (ti odlučuješ kasnije, ovo je start)
 
@@ -502,8 +504,7 @@ workshop_rules(id, kind, fabric, seam_mm, foam_offset_mm, cover_shrink_pct, roll
 - [x] PWA skelet (bez prijave i offline reda; vidi 5.3).
 - [x] Odabir broda (varijante još nisu zaseban entitet; godište i kabine su na modelu).
 - [x] Editor poligona prstom, obrazac elementa, zrcaljenje, zrcalna kopija.
-- [ ] Metoda C (ručne mjere): API prima ručni obris (`PATCH /elements/{id}` s `outline_mm`), ekran
-      s obrascem pravokutnik/trapez još nije napravljen.
+- [x] Metoda C (ručne mjere): pravokutnik, trapez, L, elipsa sa zaobljenim uglovima, u aplikaciji.
 - **Gotovo kada:** na tabletu se može otvoriti posao, izabrati Bavaria 46, nacrtati 30
   elemenata kokpita i salona i sve to sinkronizirati na poslužitelj.
 - **Stanje:** radi od kraja do kraja u pregledniku (prolaz s dodirima u `tools/ui_walkthrough.py`).
@@ -523,7 +524,7 @@ workshop_rules(id, kind, fabric, seam_mm, foam_offset_mm, cover_shrink_pct, roll
 - [ ] Markeri, kalibracija, `measure_markers`, segmentacija na dodir.
 - [ ] Živi pomoćnik za snimanje.
 - [ ] Laboratorijski test točnosti, izvještaj.
-- [ ] Pravila radionice (prostor → spužva → navlaka).
+- [x] Pravila radionice (prostor → spužva → navlaka), ekran ⚙ u aplikaciji, `var/rules.json`.
 - **Gotovo kada:** na ploči 2 × 1 m greška ≤ 3 mm u 95 % slučajeva, i na jednom brodu izmjereno
   ≥ 10 elemenata kamerom bez folije.
 
@@ -595,6 +596,9 @@ Još bi dobro došlo, ali ne blokira: s kojeg su broda uzorci u `fotke/` i koji 
 5. ~~Faza 1 i 2 u prvoj radnoj verziji.~~ Gotovo: `api/` + `app/`, cijeli tijek posao → crtanje →
    mjerenje → izvoz radi u pregledniku.
 6. ~~Dodaci u nacrtu (cif, kopče, rupe, gumbi…): ekran Nacrt, DXF slojevi, traka, popis.~~ Gotovo.
+8. ~~Krojevi sa šavom i zarezima, PDF 1:1 na A4/A3, pravila radionice, ručne mjere, izbacivanje
+   markera izvan ravnine.~~ Gotovo. Sljedeće: nesting na rolu, prijava dva korisnika, offline red,
+   kalibracija kamere kad stigneš.
 7. ~~Faza 3, metoda B: markeri, PDF za tisak, mjerenje jednim dodirom, ručna korekcija konture.~~
    Gotovo u kodu i na sintetičkoj sceni. Sljedeće: ispiši `markeri/aruco_5x5_80mm_a4.pdf`, slikaj
    S25 Ultrom nekoliko jastuka i ležajeva s markerima i pošalji fotografije; na njima se podešava

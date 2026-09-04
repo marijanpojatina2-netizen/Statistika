@@ -154,6 +154,7 @@ const routes = [
   [/^#\/element\/(\d+)$/, elementView],
   [/^#\/mjeri\/(\d+)$/, measureView],
   [/^#\/nacrt\/(\d+)$/, drawingView],
+  [/^#\/pravila$/, rulesView],
 ];
 async function route() {
   const h = location.hash || "#/";
@@ -175,7 +176,7 @@ async function jobsView() {
   crumb.textContent = "poslovi";
   const jobs = await api("/jobs");
   view.innerHTML = `
-    <div class="row"><h1 class="grow">Poslovi</h1><a class="btn primary" href="#/novi">+ Novi posao</a></div>
+    <div class="row"><h1 class="grow">Poslovi</h1><a class="btn" href="#/pravila">⚙ Pravila radionice</a><a class="btn primary" href="#/novi">+ Novi posao</a></div>
     <div class="list">${jobs.map(j => `
       <a class="item" href="#/posao/${j.job.id}">
         <div class="grow"><div class="t">${esc(j.job.boat_name || boatLabel(j.boat))}</div>
@@ -254,8 +255,9 @@ async function jobView(id) {
         <div class="card"><h2 style="margin-top:0">Elementi (${d.elements.length})</h2>
           <table><tbody id="els"></tbody></table></div>
         <div class="card"><h2 style="margin-top:0">Izvoz</h2>
-          <p class="muted small">DXF/PDF 1:1 za sve elemente s izmjerenim obrisom.</p>
-          <button id="exp">Generiraj DXF / PDF</button><div class="files" id="files"></div></div>
+          <p class="muted small">Krojevi (lice, dno, traka, spužva sa šavom i zarezima) kao DXF i PDF 1:1 slijepljen iz stranica, popis materijala, obrisi s dodacima.</p>
+          <div class="row"><select id="page" style="width:auto"><option value="A4">PDF 1:1 na A4</option><option value="A3">PDF 1:1 na A3</option></select><button id="exp" class="primary">Generiraj krojeve</button></div>
+          <div class="files" id="files"></div></div>
         <div class="card"><button class="danger" id="del">Obriši posao</button></div>
       </div>
     </div>`;
@@ -287,8 +289,9 @@ async function jobView(id) {
   $("#exp").onclick = async () => {
     $("#exp").disabled = true;
     try {
-      const r = await api(`/jobs/${id}/export`, { method: "POST" });
-      $("#files").innerHTML = r.files.map(f => `<a href="${f.url}" target="_blank">${f.name}</a>`).join("") + `<p class="muted small">${r.n_elements} elemenata</p>`;
+      const r = await api(`/jobs/${id}/export?page=${$("#page").value}`, { method: "POST" });
+      $("#files").innerHTML = r.files.map(f => `<a href="${f.url}" target="_blank">${f.name}</a>`).join("")
+        + `<table style="margin-top:8px"><tr><th>element</th><th>materijal</th><th>tkanina m²</th><th>traka</th><th>spužva m²</th></tr>${r.materijal.map(m => `<tr><td>${esc(m.element)}</td><td>${m.material}</td><td>${m.fabric_m2}</td><td>${m.strip_height_mm} × ${m.strip_length_mm}</td><td>${m.foam_m2} × ${m.foam_thickness_mm} mm</td></tr>`).join("")}</table><p class="muted small">${r.n_elements} elemenata</p>`;
     } catch (e) { toast(e.message); } finally { $("#exp").disabled = false; }
   };
   $("#del").onclick = async () => { if (confirm("Obrisati posao i sve elemente?")) { await api(`/jobs/${id}`, { method: "DELETE" }); location.hash = "#/"; } };
@@ -399,7 +402,45 @@ const METHODS = {
     hints: ["Dodirni bilo gdje unutar plohe koju mjeriš (jastuk ili prostor). Ne na marker.", ""] },
   grid: { label: "Folija na papiru s mrežom", steps: ["ishodište mreže (0,0)", "točka na osi x (npr. oznaka 50)", "točka unutar uzorka", "kontura"],
     hints: ["Dodirni ishodište mreže (0,0).", "Dodirni oznaku na osi x (npr. 50).", "Dodirni unutar uzorka.", ""] },
+  manual: { label: "Ručne mjere (metar)", steps: [], hints: [] },
 };
+// ---- ručne mjere: oblik iz brojeva -> obris u mm (y prema gore, CCW)
+const SHAPES = {
+  pravokutnik: { name: "Pravokutnik", fields: [["w", "širina (mm)", 600], ["h", "dubina (mm)", 450], ["r", "radijus uglova (mm)", 0]] },
+  trapez: { name: "Trapez", fields: [["w", "širina dolje (mm)", 600], ["w2", "širina gore (mm)", 400], ["h", "dubina (mm)", 450], ["r", "radijus uglova (mm)", 0], ["off", "pomak gornje stranice (mm, + desno)", 0]] },
+  L: { name: "L oblik (izrez u gornjem desnom kutu)", fields: [["w", "širina (mm)", 900], ["h", "dubina (mm)", 600], ["cw", "širina izreza (mm)", 300], ["ch", "dubina izreza (mm)", 250], ["r", "radijus uglova (mm)", 0]] },
+  elipsa: { name: "Elipsa / krug", fields: [["w", "širina (mm)", 500], ["h", "visina (mm)", 500]] },
+};
+function shapeOutline(kind, v) {
+  const corner = (p, r) => p;   // vrhovi bez zaobljenja; zaobljenje dolje
+  let pts;
+  if (kind === "pravokutnik") pts = [[0, 0], [v.w, 0], [v.w, v.h], [0, v.h]];
+  else if (kind === "trapez") { const x0 = (v.w - v.w2) / 2 + (v.off || 0); pts = [[0, 0], [v.w, 0], [x0 + v.w2, v.h], [x0, v.h]]; }
+  else if (kind === "L") pts = [[0, 0], [v.w, 0], [v.w, v.h - v.ch], [v.w - v.cw, v.h - v.ch], [v.w - v.cw, v.h], [0, v.h]];
+  else if (kind === "elipsa") { pts = []; for (let i = 0; i < 72; i++) { const a = i / 72 * 2 * Math.PI; pts.push([v.w / 2 + v.w / 2 * Math.cos(a), v.h / 2 + v.h / 2 * Math.sin(a)]); } return pts; }
+  const r = +v.r || 0;
+  if (r <= 0) return pts;
+  const out = [];                      // zaobljenje konveksnih uglova radijusom r
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], a = pts[(i - 1 + pts.length) % pts.length], b = pts[(i + 1) % pts.length];
+    const da = [a[0] - p[0], a[1] - p[1]], db = [b[0] - p[0], b[1] - p[1]];
+    const la = Math.hypot(...da), lb = Math.hypot(...db);
+    const ua = [da[0] / la, da[1] / la], ub = [db[0] / lb, db[1] / lb];
+    const cross = ua[0] * ub[1] - ua[1] * ub[0];
+    const ang = Math.acos(Math.max(-1, Math.min(1, ua[0] * ub[0] + ua[1] * ub[1])));
+    const rr = Math.min(r, 0.45 * Math.min(la, lb) * Math.tan(ang / 2));
+    if (cross >= 0 || rr < 1) { out.push(p); continue; }     // konkavan ugao (CCW, y gore: cross > 0) ostaje oštar
+    const t = rr / Math.tan(ang / 2);
+    const pa = [p[0] + ua[0] * t, p[1] + ua[1] * t], pb = [p[0] + ub[0] * t, p[1] + ub[1] * t];
+    const bis = [ua[0] + ub[0], ua[1] + ub[1]], lbis = Math.hypot(...bis);
+    const c = [p[0] + bis[0] / lbis * rr / Math.sin(ang / 2), p[1] + bis[1] / lbis * rr / Math.sin(ang / 2)];
+    const a0 = Math.atan2(pa[1] - c[1], pa[0] - c[0]); let a1 = Math.atan2(pb[1] - c[1], pb[0] - c[0]);
+    let d = a1 - a0; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI;
+    const n = Math.max(4, Math.round(Math.abs(d) * rr / 8));
+    for (let k = 0; k <= n; k++) { const q = a0 + d * k / n; out.push([c[0] + rr * Math.cos(q), c[1] + rr * Math.sin(q)]); }
+  }
+  return out;
+}
 async function measureView(id) {
   const d = await api(`/elements/${id}`);
   const e = d.element;
@@ -415,6 +456,13 @@ async function measureView(id) {
         <span id="up" class="muted small"></span>
         <span id="opts" class="row small"><label style="margin:0">marker <input id="mk" type="number" value="80" style="width:70px;padding:6px"> mm</label></span>
       </div>
+    </div>
+    <div class="card" id="manual" hidden>
+      <div class="row"><div class="grow"><label>Oblik</label><select id="shape">${Object.entries(SHAPES).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join("")}</select></div></div>
+      <div class="row" id="shapeFields" style="margin-top:8px"></div>
+      <div class="canvas-wrap" style="margin-top:10px"><canvas id="mc" class="sketch" style="background:#fff;height:260px"></canvas></div>
+      <p class="muted small">Mjere su mjere gotovog jastuka (obris lica). Dodatak za šav i razlika prema spužvi računaju se u kroju.</p>
+      <div class="tools"><button class="primary" id="manualSave">✓ Spremi obris</button></div>
     </div>
     <div class="card" id="work" hidden>
       <div class="steps" id="steps"></div>
@@ -437,10 +485,38 @@ async function measureView(id) {
       </div>
     </div>`;
   const hintFor = () => $("#mhint").textContent = method === "markers"
-    ? "Položi 4–8 markera na plohu oko elementa (ne na sam element), slikaj odozgo što okomitije, cijeli element i svi markeri u kadru."
-    : "Folija s nacrtanim obrisom na papiru s crvenom mrežom, cijeli uzorak i oznake brojeva na osima u kadru, bez sjene preko crvenih linija.";
+    ? "Položi 4–8 markera na plohu oko elementa ili na sam jastuk (kruto, ravno, dalje od ruba), slikaj odozgo što okomitije, cijeli element i svi markeri u kadru."
+    : method === "grid" ? "Folija s nacrtanim obrisom na papiru s crvenom mrežom, cijeli uzorak i oznake brojeva na osima u kadru, bez sjene preko crvenih linija."
+    : "Upiši mjere gotovog jastuka izmjerene metrom. Za složenije oblike koristi markere ili foliju.";
   hintFor();
-  $("#methods").querySelectorAll("label").forEach(l => l.onclick = () => { method = l.dataset.m; $("#methods").querySelectorAll("label").forEach(x => x.classList.toggle("primary", x === l)); $("#opts").hidden = method !== "markers"; hintFor(); if (photo) startTaps(); });
+  $("#methods").querySelectorAll("label").forEach(l => l.onclick = () => { method = l.dataset.m; $("#methods").querySelectorAll("label").forEach(x => x.classList.toggle("primary", x === l)); $("#opts").hidden = method !== "markers"; hintFor(); $("#manual").hidden = method !== "manual"; $("#pick").querySelector(".row:last-child").hidden = method === "manual"; if (method === "manual") manualUI(); else if (photo) startTaps(); });
+  function manualUI() {
+    const kind = $("#shape").value, def = SHAPES[kind];
+    if (!$("#shapeFields").dataset.kind || $("#shapeFields").dataset.kind !== kind) {
+      $("#shapeFields").dataset.kind = kind;
+      $("#shapeFields").innerHTML = def.fields.map(([k, lab, dv]) => `<div class="grow"><label>${lab}</label><input data-f="${k}" type="number" value="${dv}"></div>`).join("");
+      $("#shapeFields").querySelectorAll("input").forEach(i => i.oninput = manualDraw);
+    }
+    manualDraw();
+  }
+  function manualValues() { const v = {}; $("#shapeFields").querySelectorAll("input").forEach(i => v[i.dataset.f] = +i.value || 0); return v; }
+  function manualDraw() {
+    const mc = $("#mc"), c2 = mc.getContext("2d"), W = mc.parentElement.clientWidth, H = 260;
+    mc.style.width = W + "px"; mc.width = W * dpr; mc.height = H * dpr; c2.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const pts = shapeOutline($("#shape").value, manualValues()); if (pts.length < 3) return;
+    const b = bbox(pts), sc = Math.min((W - 40) / (b[2] - b[0] || 1), (H - 40) / (b[3] - b[1] || 1));
+    const T = ([x, y]) => [20 + (x - b[0]) * sc, H - 20 - (y - b[1]) * sc];
+    c2.clearRect(0, 0, W, H); c2.beginPath(); pts.forEach((p, i) => { const q = T(p); i ? c2.lineTo(q[0], q[1]) : c2.moveTo(q[0], q[1]); }); c2.closePath();
+    c2.fillStyle = "rgba(11,61,92,.08)"; c2.fill(); c2.strokeStyle = "#16232e"; c2.lineWidth = 2; c2.stroke();
+    c2.fillStyle = "#5e6c78"; c2.font = "12px system-ui"; c2.fillText(`${Math.round(b[2] - b[0])} × ${Math.round(b[3] - b[1])} mm`, 20, 16);
+  }
+  $("#shape").onchange = manualUI;
+  $("#manualSave").onclick = async () => {
+    const pts = shapeOutline($("#shape").value, manualValues());
+    if (pts.length < 3 || bbox(pts)[2] - bbox(pts)[0] < 10) { toast("Provjeri mjere"); return; }
+    await api(`/elements/${e.id}`, { method: "PATCH", body: { outline_mm: pts.map(p => [Math.round(p[0] * 10) / 10, Math.round(p[1] * 10) / 10]), method: "manual", status: "potvrđen" } });
+    toast("Obris spremljen. Sad dodaci."); location.hash = "#/nacrt/" + e.id;
+  };
 
   // ---- stanje
   let photo = null, img = null, step = 0, pts = [], result = null, rectImg = null;
@@ -559,7 +635,7 @@ async function measureView(id) {
     let per = 0; for (let i = 0; i < poly.length; i++) { const a = poly[i], c = poly[(i + 1) % poly.length]; per += Math.hypot(a[0] - c[0], a[1] - c[1]); }
     const q = result.quality;
     $("#result").innerHTML = `<table><tr><th>gabarit</th><td>${Math.round(b[2] - b[0])} × ${Math.round(b[3] - b[1])} mm</td><th>opseg</th><td>${Math.round(per)} mm</td><th>točaka</th><td>${poly.length}</td></tr>
-      ${method === "markers" ? `<tr><th>markera</th><td>${q.n_markers} (${q.marker_ids.join(", ")})</td><th>ostatak prilagodbe</th><td>${q.fit_rms_mm} mm ${q.fit_rms_mm > 1.5 ? "⚠️" : "✓"}</td><th>rezolucija</th><td>${q.mm_per_px} mm/px</td></tr>`
+      ${method === "markers" ? `<tr><th>markera</th><td>${q.n_markers} (${q.marker_ids.join(", ")})${q.dropped_ids && q.dropped_ids.length ? `<br><b style="color:var(--bad)">⚠️ izbačen M${q.dropped_ids.join(", M")}: nije u ravnini s ostalima</b>` : ""}</td><th>ostatak prilagodbe</th><td>${q.fit_rms_mm} mm ${q.fit_rms_mm > 1.5 ? "⚠️" : "✓"}</td><th>rezolucija</th><td>${q.mm_per_px} mm/px</td></tr>`
         : `<tr><th>čvorova mreže</th><td>${q.grid_nodes}</td><th>ostatak homografije</th><td>${q.homography_rms_px} px ${q.homography_rms_px > 3 ? "⚠️" : "✓"}</td><th>potez</th><td>${q.stroke_mm} mm</td></tr>`}</table>`;
   }
   const EH = { move: "Povuci točku da je pomakneš; povuci prazno mjesto da pomakneš sliku; dva prsta za zum.", add: "Dodirni konturu gdje želiš novu točku.",
@@ -798,4 +874,33 @@ async function drawingView(id) {
   fit(); setTool("select"); props();
   window.__nacrt = { poly, toS: p => toS(p), pointAtS: s => pointAtS(poly, s), L: () => cumlen(poly).at(-1) };   // za automatski prolaz (tools/ui_walkthrough.py)
   window.onresize = () => { fit(); draw(); };
+}
+
+
+// ------------------------------------------------------------------ pravila radionice
+async function rulesView() {
+  crumb.textContent = "pravila radionice";
+  const r = await api("/rules");
+  const num = (id, lab, v, step = 1) => `<div class="grow"><label>${lab}</label><input id="${id}" type="number" step="${step}" value="${v}"></div>`;
+  view.innerHTML = `
+    <div class="row"><h1 class="grow">Pravila radionice</h1><a class="btn" href="#/">Natrag</a></div>
+    <div class="card"><h2 style="margin-top:0">Šav i zarezi</h2>
+      <div class="row">${num("seam", "dodatak za šav (mm)", r.seam_mm)}${num("nstep", "zarezi po ravnim dijelovima svakih (mm)", r.notch_step_mm)}${num("nlen", "duljina zareza (mm)", r.notch_len_mm)}</div></div>
+    <div class="card"><h2 style="margin-top:0">Spužva prema izmjerenom prostoru (mm po strani, negativno = manja)</h2>
+      <div class="row">${num("f_kokpit", "kokpit", r.foam_offset_mm.kokpit)}${num("f_paluba", "paluba", r.foam_offset_mm.paluba)}${num("f_default", "unutrašnjost (salon, kabine)", r.foam_offset_mm.default)}</div></div>
+    <div class="card"><h2 style="margin-top:0">Navlaka manja od spužve (%)</h2>
+      <div class="row">${num("s_vinil", "vinil", r.cover_shrink_pct.vinil, 0.1)}${num("s_tkanina", "tkanina", r.cover_shrink_pct.tkanina, 0.1)}</div>
+      <p class="muted small">Materijal po zoni: kokpit i paluba = vinil, ostalo = tkanina.</p></div>
+    <div class="card"><h2 style="margin-top:0">Role i ispis</h2>
+      <div class="row">${num("r_vinil", "širina role vinil (mm)", r.roll_width_mm.vinil)}${num("r_tkanina", "širina role tkanina (mm)", r.roll_width_mm.tkanina)}${num("gap", "razmak komada (mm)", r.gap_mm)}
+        <div class="grow"><label>PDF 1:1 na</label><select id="page"><option ${r.page === "A4" ? "selected" : ""}>A4</option><option ${r.page === "A3" ? "selected" : ""}>A3</option></select></div></div></div>
+    <div class="tools"><button class="primary" id="save">Spremi</button></div>`;
+  $("#save").onclick = async () => {
+    const v = id => +$("#" + id).value;
+    await api("/rules", { method: "PUT", body: { seam_mm: v("seam"), notch_step_mm: v("nstep"), notch_len_mm: v("nlen"),
+      foam_offset_mm: { kokpit: v("f_kokpit"), paluba: v("f_paluba"), default: v("f_default") },
+      cover_shrink_pct: { vinil: v("s_vinil"), tkanina: v("s_tkanina") }, roll_width_mm: { vinil: v("r_vinil"), tkanina: v("r_tkanina") },
+      gap_mm: v("gap"), page: $("#page").value } });
+    toast("Pravila spremljena"); location.hash = "#/";
+  };
 }
