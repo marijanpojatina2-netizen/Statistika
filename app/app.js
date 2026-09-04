@@ -153,6 +153,7 @@ const routes = [
   [/^#\/posao\/(\d+)$/, jobView],
   [/^#\/element\/(\d+)$/, elementView],
   [/^#\/mjeri\/(\d+)$/, measureView],
+  [/^#\/nacrt\/(\d+)$/, drawingView],
 ];
 async function route() {
   const h = location.hash || "#/";
@@ -266,7 +267,7 @@ async function jobView(id) {
       const b = e.outline_mm ? bbox(e.outline_mm) : null;
       return `<tr><td><b>${esc(e.code || "?")}</b><br><span class="muted small">${esc(e.zone)} · ${esc(e.kind)} · ${e.thickness_mm} mm</span></td>
         <td><span class="chip ${e.status}">${e.status}</span>${b ? `<br><span class="small">${Math.round(b[2] - b[0])} × ${Math.round(b[3] - b[1])} mm</span>` : ""}</td>
-        <td style="white-space:nowrap"><a class="btn" href="#/element/${e.id}">Uredi</a> <a class="btn accent" href="#/mjeri/${e.id}">Mjeri</a></td></tr>`;
+        <td style="white-space:nowrap"><a class="btn" href="#/element/${e.id}">Uredi</a> <a class="btn accent" href="#/mjeri/${e.id}">Mjeri</a>${e.outline_mm ? ` <a class="btn" href="#/nacrt/${e.id}">Nacrt${e.features && e.features.length ? ` (${e.features.length})` : ""}</a>` : ""}</td></tr>`;
     }).join("") || `<tr><td class="muted">Nema elemenata. Dodaj prvi s "+ Element" i nacrtaj ga prstom.</td></tr>`;
   }
   render();
@@ -365,30 +366,26 @@ async function elementView(id) {
 
 // ------------------------------------------------------------------ geometrija za uređivanje konture
 function dpSimplify(pts, eps) {
+  /* Douglas-Peucker za ZATVORENU krivulju: podijeli je u dva luka između dvije najudaljenije točke,
+     pojednostavi svaki luk zasebno i spoji. */
   if (pts.length < 5) return pts.slice();
-  const d2 = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy || 1;
+  const dseg = (p, a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy || 1;
     const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L));
     return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy); };
-  const rec = (a, b) => {
+  const rec = (arr, a, b) => {           // unutarnji indeksi (rastući) koje treba zadržati između a i b
     if (b - a < 2) return [];
     let im = -1, dm = 0;
-    for (let i = a + 1; i < b; i++) { const d = d2(pts[i], pts[a], pts[b]); if (d > dm) { dm = d; im = i; } }
-    return dm > eps ? [...rec(a, im), im, ...rec(im, b)] : [];
+    for (let i = a + 1; i < b; i++) { const d = dseg(arr[i], arr[a], arr[b]); if (d > dm) { dm = d; im = i; } }
+    return dm > eps ? [...rec(arr, a, im), im, ...rec(arr, im, b)] : [];
   };
-  // zatvorena krivulja: podijeli na dva luka između najudaljenijih točaka
-  let i0 = 0, i1 = 0, best = 0;
-  for (let i = 0; i < pts.length; i += Math.max(1, Math.floor(pts.length / 60)))
-    for (let j = i + 1; j < pts.length; j += Math.max(1, Math.floor(pts.length / 60))) {
-      const d = Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]); if (d > best) { best = d; i0 = i; i1 = j; }
-    }
-  const idx = [i0, ...rec(i0, i1), i1, ...rec(i1, pts.length - 1 + (i0 === 0 ? 0 : 0))];
-  // drugi luk preko kraja niza: rotiraj
-  const rot = [...pts.slice(i1), ...pts.slice(0, i0 + 1)];
-  const back = rec.call(null, 0, rot.length - 1);
-  const out = [];
-  idx.slice(0, idx.indexOf(i1) + 1).forEach(i => out.push(pts[i]));
-  back.forEach(i => out.push(rot[i]));
-  return out;
+  let i0 = 0, i1 = 0, best = -1;
+  const st = Math.max(1, Math.floor(pts.length / 80));
+  for (let i = 0; i < pts.length; i += st) for (let j = i + 1; j < pts.length; j += st) {
+    const d = Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1]); if (d > best) { best = d; i0 = i; i1 = j; }
+  }
+  const arc1 = pts.slice(i0, i1 + 1), arc2 = [...pts.slice(i1), ...pts.slice(0, i0 + 1)];
+  const k1 = rec(arc1, 0, arc1.length - 1), k2 = rec(arc2, 0, arc2.length - 1);
+  return [arc1[0], ...k1.map(i => arc1[i]), arc1[arc1.length - 1], ...k2.map(i => arc2[i])];
 }
 function segDist(p, a, b) {
   const dx = b[0] - a[0], dy = b[1] - a[1], L = dx * dx + dy * dy || 1;
@@ -624,7 +621,181 @@ async function measureView(id) {
   $("#accept").onclick = async () => {
     if (poly.length < 3) { toast("kontura treba bar 3 točke"); return; }
     await api(`/elements/${e.id}/accept`, { method: "POST", body: { measurement_id: result.measurement_id, outline_mm: poly.map(p => toMm(p).map(v => Math.round(v * 10) / 10)) } });
-    toast("Kontura prihvaćena"); location.hash = "#/posao/" + e.job_id;
+    toast("Kontura prihvaćena. Sad dodaci: cif, kopče, rupe…"); location.hash = "#/nacrt/" + e.id;
   };
   window.onresize = () => { if (!photo) return; if (result) { fitView(); drawEdit(); } else { fitPhoto(); drawTaps(); } };
+}
+
+
+// ------------------------------------------------------------------ nacrt: dodaci na elementu (cif, keder, kopče, rupe, gumbi…)
+const FCOL = { zip: "#e0312a", keder: "#1f5fbf", cicak: "#2e8b57", kopca: "#c02aa0", rupa: "#d9822b", rupica: "#0f8a8a", gumb: "#7a4a1f", vezica: "#6a3fb5", napomena: "#16232e" };
+function cumlen(poly) { const c = [0]; for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; c.push(c[i] + Math.hypot(b[0] - a[0], b[1] - a[1])); } return c; }
+function pointAtS(poly, s) {
+  const c = cumlen(poly), L = c[c.length - 1]; s = ((s % L) + L) % L;
+  let i = 0; while (i < poly.length - 1 && c[i + 1] <= s) i++;
+  const a = poly[i], b = poly[(i + 1) % poly.length], ln = c[i + 1] - c[i], t = ln > 0 ? (s - c[i]) / ln : 0;
+  return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
+}
+function projectS(poly, p) {
+  const c = cumlen(poly); let best = 1e18, bs = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length]; const [d, t] = segDist(p, a, b);
+    if (d < best) { best = d; bs = c[i] + t * (c[i + 1] - c[i]); }
+  }
+  return [bs, best];
+}
+function arcPts(poly, s0, s1, step = 5) {
+  const L = cumlen(poly).at(-1); let len = (((s1 - s0) % L) + L) % L; if (len < 1e-6) len = L;
+  const n = Math.max(2, Math.floor(len / step) + 1); const out = [];
+  for (let k = 0; k < n; k++) out.push(pointAtS(poly, s0 + k * len / (n - 1)));
+  return out;
+}
+function flabel(f) {
+  const p = f.params || {};
+  return { zip: `CIF ${p.sirina} mm (${p.strana})`, keder: `KEDER Ø${p.promjer}`, cicak: `ČIČAK ${p.sirina}`, kopca: `KOPČA ${p.vrsta || ""}`,
+    rupa: `RUPA Ø${p.promjer}`, rupica: `RUPICA Ø${p.promjer}`, gumb: `GUMB Ø${p.promjer}`, vezica: `VEZICA ${p.duljina}`, napomena: p.tekst || "napomena" }[f.type] || f.type;
+}
+const PARAM_UI = {   // polje -> (oznaka, tip, opcije)
+  sirina: ["širina (mm)", "select", [5, 8, 10, 20, 25, 50]], strana: ["strana", "select", ["traka", "dno", "lice"]],
+  promjer: ["promjer (mm)", "number"], vrsta: ["vrsta", "select", ["druker", "tenax", "lift-the-dot", "karabiner", "čičak"]],
+  duljina: ["duljina (mm)", "number"], tekst: ["tekst", "text"],
+};
+
+async function drawingView(id) {
+  const d = await api(`/elements/${id}`);
+  const e = d.element;
+  if (!e.outline_mm) { location.hash = "#/mjeri/" + id; return; }
+  const TYPES = await api("/feature_types");
+  crumb.textContent = `${d.job.boat_name || boatLabel(d.boat)} › ${e.code} › nacrt`;
+  const poly = e.outline_mm.map(p => p.slice());
+  let feats = (e.features || []).map(f => JSON.parse(JSON.stringify(f)));
+  let tool = "select", sel = null, pending = null, nextId = feats.length + 1;
+  const tiles = TYPES.map(t => `<button data-t="${t.type}" style="border-left:5px solid ${FCOL[t.type]}">${t.name}</button>`).join("");
+  view.innerHTML = `
+    <div class="row"><h1 class="grow">Nacrt: ${esc(e.code)} <span class="muted small">${esc(e.zone)} · ${esc(e.kind)} · ${e.thickness_mm} mm</span></h1><a class="btn" href="#/posao/${e.job_id}">Natrag</a></div>
+    <div class="two">
+      <div class="card">
+        <div class="canvas-wrap"><canvas class="sketch" id="c" style="background:#fff"></canvas></div>
+        <div class="tools" style="margin-top:8px"><button id="zin">🔍+</button><button id="zout">🔍−</button><button id="zfit">⤢</button><button id="undo">↶ Poništi</button></div>
+        <p class="muted small" id="hint"></p>
+      </div>
+      <div>
+        <div class="card"><h2 style="margin-top:0">Dodaj dodatak</h2>
+          <div class="tools"><button data-t="select" class="on">☝ Odaberi / pomakni</button>${tiles}</div>
+          <p class="muted small">Rubni dodaci (cif, keder, čičak): dodirni obris na početku i na kraju, u smjeru obrisa. Točkasti: dodirni mjesto na elementu.</p>
+        </div>
+        <div class="card" id="props"><span class="muted small">Ništa nije odabrano. Dodirni dodatak na nacrtu da mu promijeniš parametre.</span></div>
+        <div class="card"><h2 style="margin-top:0">Popis dodataka</h2><table><tbody id="list"></tbody></table></div>
+        <div class="tools"><button class="primary" id="save">Spremi nacrt</button><a class="btn" href="#/mjeri/${e.id}">Ponovi mjerenje</a></div>
+      </div>
+    </div>`;
+  const canvas = $("#c"), ctx = canvas.getContext("2d"), dpr = window.devicePixelRatio || 1;
+  let W = 0, H = 0, vs = 1, vx = 0, vy = 0;
+  const b = bbox(poly);
+  function fit() {
+    W = canvas.parentElement.clientWidth; H = Math.min(Math.round(window.innerHeight * 0.7), Math.round(W * (b[3] - b[1] + 200) / (b[2] - b[0] + 200)) + 40);
+    canvas.style.width = W + "px"; canvas.style.height = H + "px"; canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    vs = Math.min(W / (b[2] - b[0] + 200), H / (b[3] - b[1] + 200));
+    vx = (W - (b[0] + b[2]) * vs) / 2; vy = (H + (b[1] + b[3]) * vs) / 2;        // y prema gore
+  }
+  const toS = ([x, y]) => [x * vs + vx, -y * vs + vy];
+  const toW = ev => { const r = canvas.getBoundingClientRect(); return [(ev.clientX - r.left - vx) / vs, -(ev.clientY - r.top - vy) / vs]; };
+  function draw() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    // mreža 100 mm
+    ctx.strokeStyle = "#f0d0d0"; ctx.lineWidth = 0.6;
+    const gx0 = Math.floor((b[0] - 200) / 100) * 100, gx1 = b[2] + 200, gy0 = Math.floor((b[1] - 200) / 100) * 100, gy1 = b[3] + 200;
+    for (let x = gx0; x <= gx1; x += 100) { const a = toS([x, gy0]), c = toS([x, gy1]); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(c[0], c[1]); ctx.stroke(); }
+    for (let y = gy0; y <= gy1; y += 100) { const a = toS([gx0, y]), c = toS([gx1, y]); ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(c[0], c[1]); ctx.stroke(); }
+    // obris
+    ctx.beginPath(); poly.forEach((p, i) => { const s = toS(p); i ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); }); ctx.closePath();
+    ctx.fillStyle = "rgba(11,61,92,.06)"; ctx.fill(); ctx.strokeStyle = "#16232e"; ctx.lineWidth = 2; ctx.stroke();
+    const s0 = toS(poly[0]); ctx.fillStyle = "#16232e"; ctx.beginPath(); ctx.arc(s0[0], s0[1], 4, 0, Math.PI * 2); ctx.fill();
+    ctx.font = "11px system-ui"; ctx.fillText("početak (s=0) →", s0[0] + 6, s0[1] - 6);
+    ctx.fillText(`${Math.round(b[2] - b[0])} × ${Math.round(b[3] - b[1])} mm`, toS([b[0], b[1]])[0], toS([b[0], b[1]])[1] + 16);
+    // dodaci
+    feats.forEach((f, i) => {
+      const col = FCOL[f.type] || "#000", on = i === sel;
+      ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = on ? 5 : 3;
+      if (f.s0 !== undefined) {
+        const a = arcPts(poly, f.s0, f.s1); ctx.beginPath(); a.forEach((p, k) => { const s = toS(p); k ? ctx.lineTo(s[0], s[1]) : ctx.moveTo(s[0], s[1]); }); ctx.stroke();
+        for (const q of [a[0], a.at(-1)]) { const s = toS(q); ctx.beginPath(); ctx.arc(s[0], s[1], on ? 7 : 5, 0, Math.PI * 2); ctx.fill(); }
+        const m = toS(a[Math.floor(a.length / 2)]); ctx.font = "bold 11px system-ui"; ctx.fillText(`${flabel(f)} L=${Math.round(edgeLen(f))}`, m[0] + 8, m[1] - 8);
+      } else {
+        const s = toS(f.p), r = Math.max(6, ((f.params || {}).promjer || 15) / 2 * vs);
+        ctx.lineWidth = on ? 3 : 1.5; ctx.beginPath(); ctx.arc(s[0], s[1], r, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(s[0] - r * 1.6, s[1]); ctx.lineTo(s[0] + r * 1.6, s[1]); ctx.moveTo(s[0], s[1] - r * 1.6); ctx.lineTo(s[0], s[1] + r * 1.6); ctx.stroke();
+        ctx.font = "bold 11px system-ui"; ctx.fillText(flabel(f), s[0] + r + 4, s[1] - r - 2);
+      }
+    });
+    if (pending) { const s = toS(pointAtS(poly, pending.s0)); ctx.fillStyle = FCOL[pending.type]; ctx.beginPath(); ctx.arc(s[0], s[1], 8, 0, Math.PI * 2); ctx.fill(); ctx.fillText("početak", s[0] + 10, s[1]); }
+    $("#list").innerHTML = feats.map((f, i) => `<tr class="${i === sel ? "on" : ""}"><td><span style="color:${FCOL[f.type]}">●</span> ${esc(flabel(f))}</td><td class="small">${f.s0 !== undefined ? `s ${Math.round(f.s0)}→${Math.round(f.s1)} (L ${Math.round(edgeLen(f))} mm)` : `${Math.round(f.p[0])}, ${Math.round(f.p[1])}`}</td><td><button data-i="${i}" class="sel">✎</button> <button data-i="${i}" class="del danger">✕</button></td></tr>`).join("") || `<tr><td class="muted">Još nema dodataka.</td></tr>`;
+    $("#list").querySelectorAll(".sel").forEach(x => x.onclick = () => select(+x.dataset.i));
+    $("#list").querySelectorAll(".del").forEach(x => x.onclick = () => { push(); feats.splice(+x.dataset.i, 1); sel = null; props(); draw(); });
+  }
+  const edgeLen = f => { const L = cumlen(poly).at(-1); const l = (((f.s1 - f.s0) % L) + L) % L; return l < 1e-6 ? L : l; };
+  const undoStack = []; const push = () => { undoStack.push(JSON.stringify(feats)); if (undoStack.length > 50) undoStack.shift(); };
+  function props() {
+    const box = $("#props");
+    if (sel === null) { box.innerHTML = `<span class="muted small">Ništa nije odabrano. Dodirni dodatak na nacrtu da mu promijeniš parametre.</span>`; return; }
+    const f = feats[sel], t = TYPES.find(x => x.type === f.type);
+    const fields = Object.keys(t.defaults).map(k => { const [lab, kind, opts] = PARAM_UI[k] || [k, "text"]; const v = f.params[k];
+      return `<div class="grow"><label>${lab}</label>${kind === "select" ? `<select data-k="${k}">${opts.map(o => `<option ${String(o) === String(v) ? "selected" : ""}>${o}</option>`).join("")}</select>` : `<input data-k="${k}" type="${kind}" value="${esc(v)}">`}</div>`; }).join("");
+    const pos = f.s0 !== undefined
+      ? `<div class="grow"><label>početak s (mm)</label><input data-s="s0" type="number" value="${Math.round(f.s0)}"></div><div class="grow"><label>kraj s (mm)</label><input data-s="s1" type="number" value="${Math.round(f.s1)}"></div>`
+      : `<div class="grow"><label>x (mm)</label><input data-p="0" type="number" value="${Math.round(f.p[0])}"></div><div class="grow"><label>y (mm)</label><input data-p="1" type="number" value="${Math.round(f.p[1])}"></div>`;
+    box.innerHTML = `<h2 style="margin-top:0;color:${FCOL[f.type]}">${esc(t.name)}</h2><div class="row">${fields}</div><div class="row" style="margin-top:8px">${pos}</div>
+      <div class="tools"><button id="dup">Kopiraj</button><button class="danger" id="fdel">Obriši</button></div>`;
+    box.querySelectorAll("[data-k]").forEach(inp => inp.onchange = () => { push(); f.params[inp.dataset.k] = inp.type === "number" ? +inp.value : inp.value; draw(); });
+    box.querySelectorAll("[data-s]").forEach(inp => inp.onchange = () => { push(); f[inp.dataset.s] = +inp.value; draw(); });
+    box.querySelectorAll("[data-p]").forEach(inp => inp.onchange = () => { push(); f.p[+inp.dataset.p] = +inp.value; draw(); });
+    $("#dup").onclick = () => { push(); const g = JSON.parse(JSON.stringify(f)); g.id = "f" + nextId++; if (g.p) { g.p[0] += 100; } else { const L = cumlen(poly).at(-1); g.s0 = (g.s0 + 200) % L; g.s1 = (g.s1 + 200) % L; } feats.push(g); select(feats.length - 1); };
+    $("#fdel").onclick = () => { push(); feats.splice(sel, 1); sel = null; props(); draw(); };
+  }
+  function select(i) { sel = i; props(); draw(); }
+  function setTool(t) { tool = t; pending = null; $("#view").querySelectorAll("[data-t]").forEach(x => x.classList.toggle("on", x.dataset.t === t));
+    const T = TYPES.find(x => x.type === t);
+    $("#hint").textContent = t === "select" ? "Dodirni dodatak da ga odabereš; povuci točkasti dodatak ili kraj rubnog da ga pomakneš. Povuci prazno za pomak slike, dva prsta za zum."
+      : T.geom === "edge" ? `${T.name}: dodirni obris na POČETKU, pa na KRAJU (u smjeru strelice od početka obrisa).` : `${T.name}: dodirni mjesto na elementu.`; draw(); }
+  // ---- događaji
+  const pointers = new Map(); let pinch = null, drag = null, pan = null;
+  const hit = w => {
+    for (let i = feats.length - 1; i >= 0; i--) { const f = feats[i];
+      if (f.s0 !== undefined) { for (const [key, s] of [["s0", f.s0], ["s1", f.s1]]) { const q = pointAtS(poly, s); if (Math.hypot(q[0] - w[0], q[1] - w[1]) * vs < 16) return { i, key }; }
+        const a = arcPts(poly, f.s0, f.s1, 10); for (let k = 0; k < a.length - 1; k++) if (segDist(w, a[k], a[k + 1])[0] * vs < 10) return { i, key: null }; }
+      else { const r = Math.max(8, ((f.params || {}).promjer || 15) / 2 * vs); if (Math.hypot(f.p[0] - w[0], f.p[1] - w[1]) * vs < r + 8) return { i, key: "p" }; } }
+    return null;
+  };
+  canvas.onpointerdown = ev => {
+    canvas.setPointerCapture(ev.pointerId); pointers.set(ev.pointerId, [ev.clientX, ev.clientY]);
+    if (pointers.size === 2) { const [a, c] = [...pointers.values()]; pinch = { d: Math.hypot(a[0] - c[0], a[1] - c[1]), vs, vx, vy, cx: (a[0] + c[0]) / 2, cy: (a[1] + c[1]) / 2 }; drag = null; pan = null; return; }
+    const w = toW(ev);
+    if (tool === "select") { const h = hit(w); if (h) { select(h.i); if (h.key) { push(); drag = h; } } else pan = { x: ev.clientX, y: ev.clientY, vx, vy }; return; }
+    const T = TYPES.find(x => x.type === tool);
+    if (T.geom === "edge") {
+      const [s, dist] = projectS(poly, w); if (dist * vs > 40) { toast("Dodirni bliže obrisu"); return; }
+      if (!pending) { pending = { type: tool, s0: s }; draw(); }
+      else { push(); feats.push({ id: "f" + nextId++, type: tool, s0: Math.round(pending.s0), s1: Math.round(s), params: { ...T.defaults } }); pending = null; select(feats.length - 1); }
+    } else {
+      push(); feats.push({ id: "f" + nextId++, type: tool, p: [Math.round(w[0]), Math.round(w[1])], params: { ...T.defaults } }); select(feats.length - 1);
+    }
+  };
+  canvas.onpointermove = ev => {
+    if (!pointers.has(ev.pointerId)) return; pointers.set(ev.pointerId, [ev.clientX, ev.clientY]);
+    if (pinch && pointers.size === 2) { const [a, c] = [...pointers.values()]; const dd = Math.hypot(a[0] - c[0], a[1] - c[1]); const r = canvas.getBoundingClientRect();
+      const cx = (a[0] + c[0]) / 2 - r.left, cy = (a[1] + c[1]) / 2 - r.top, k = Math.max(0.2, Math.min(10, pinch.vs * dd / pinch.d)) / pinch.vs;
+      vs = pinch.vs * k; vx = cx - (pinch.cx - r.left - pinch.vx) * k; vy = cy - (pinch.cy - r.top - pinch.vy) * k; draw(); return; }
+    const w = toW(ev);
+    if (drag) { const f = feats[drag.i]; if (drag.key === "p") f.p = [Math.round(w[0]), Math.round(w[1])]; else f[drag.key] = Math.round(projectS(poly, w)[0]); draw(); }
+    else if (pan) { vx = pan.vx + ev.clientX - pan.x; vy = pan.vy + ev.clientY - pan.y; draw(); }
+  };
+  canvas.onpointerup = canvas.onpointercancel = ev => { pointers.delete(ev.pointerId); if (pointers.size < 2) pinch = null; if (drag) props(); drag = null; pan = null; };
+  $("#view").querySelectorAll("[data-t]").forEach(x => x.onclick = () => setTool(x.dataset.t));
+  const zoomAt = k => { vx = W / 2 - (W / 2 - vx) * k; vy = H / 2 - (H / 2 - vy) * k; vs *= k; draw(); };
+  $("#zin").onclick = () => zoomAt(1.5); $("#zout").onclick = () => zoomAt(1 / 1.5); $("#zfit").onclick = () => { fit(); draw(); };
+  $("#undo").onclick = () => { if (undoStack.length) { feats = JSON.parse(undoStack.pop()); sel = null; props(); draw(); } };
+  $("#save").onclick = async () => { await api(`/elements/${e.id}`, { method: "PATCH", body: { features: feats } }); toast("Nacrt spremljen"); location.hash = "#/posao/" + e.job_id; };
+  fit(); setTool("select"); props();
+  window.__nacrt = { poly, toS: p => toS(p), pointAtS: s => pointAtS(poly, s), L: () => cumlen(poly).at(-1) };   // za automatski prolaz (tools/ui_walkthrough.py)
+  window.onresize = () => { fit(); draw(); };
 }

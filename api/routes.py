@@ -15,6 +15,7 @@ from sqlmodel import Session, select, or_
 from jastuk_cv import measure_grid, outputs
 from jastuk_cv.markers import fit_plane, rectify_plane, segment_seed, markers_mask
 from jastuk_cv.measure import finish_polyline
+from jastuk_cv import features as FT
 from . import db
 from .models import BoatModel, Element, Job, Measurement
 
@@ -131,8 +132,15 @@ class ElementIn(BaseModel):
     notes: Optional[str] = None
     sketch: Optional[list] = None
     outline_mm: Optional[list] = None
+    features: Optional[list] = None
     status: Optional[str] = None
     method: Optional[str] = None
+
+
+@router.get("/feature_types")
+def feature_types():
+    """Tipovi dodataka (cif, keder, kopča...) s geometrijom i zadanim parametrima, za sučelje."""
+    return [dict(type=k, name=v[0], geom=v[1], defaults=v[2]) for k, v in FT.TYPES.items()]
 
 
 @router.post("/jobs/{job_id}/elements")
@@ -163,6 +171,8 @@ def update_element(el_id: int, e: ElementIn, session: Session = Depends(db.get_s
     if not el:
         raise HTTPException(404, "element ne postoji")
     data = e.model_dump(exclude_unset=True)
+    if data.get("features") is not None:
+        data["features"] = _clean_features(data["features"])
     if "outline_mm" in data and data["outline_mm"] is not None:
         data["outline_mm"] = _clean_outline(data["outline_mm"])
         data.setdefault("status", "potvrđen")
@@ -185,6 +195,25 @@ def delete_element(el_id: int, session: Session = Depends(db.get_session)):
     return {"ok": True}
 
 
+def _clean_features(feats) -> list:
+    out = []
+    for i, f in enumerate(feats):
+        t = f.get("type")
+        if t not in FT.TYPES:
+            raise HTTPException(422, f"nepoznat tip dodatka: {t}")
+        g = dict(id=f.get("id") or f"f{i + 1}", type=t, params={**FT.TYPES[t][2], **(f.get("params") or {})})
+        if FT.TYPES[t][1] == "edge":
+            if "s0" not in f or "s1" not in f:
+                raise HTTPException(422, f"rubni dodatak {t} treba s0 i s1")
+            g["s0"], g["s1"] = round(float(f["s0"]), 1), round(float(f["s1"]), 1)
+        else:
+            if "p" not in f:
+                raise HTTPException(422, f"točkasti dodatak {t} treba p")
+            g["p"] = [round(float(f["p"][0]), 1), round(float(f["p"][1]), 1)]
+        out.append(g)
+    return out
+
+
 def _clean_outline(pts) -> list:
     p = np.asarray(pts, float).reshape(-1, 2)
     if len(p) < 3:
@@ -192,6 +221,7 @@ def _clean_outline(pts) -> list:
     x, y = p[:, 0], p[:, 1]
     if 0.5 * np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y) < 0:
         p = p[::-1]
+    p = p - p.min(0)                      # donji lijevi kut gabarita u (0, 0): čitljive koordinate dodataka
     return np.round(p, 2).tolist()
 
 
@@ -287,7 +317,8 @@ def measure_element_markers(el_id: int, m: MeasureMarkersIn, session: Session = 
     except Exception as ex:                                  # noqa: BLE001
         log.exception("mjerenje markerima nije uspjelo")
         raise HTTPException(422, f"mjerenje nije uspjelo: {ex}")
-    p, corners = finish_polyline(poly_px + origin)
+    # obris u mm s osi y prema GORE (kao papir/DXF); u slici je y prema dolje -> zrcali y
+    p, corners = finish_polyline((poly_px + origin) * np.array([1.0, -1.0]), sigma=4.0)
     p = np.round(p, 2)
     per = float(np.hypot(*np.diff(np.vstack([p, p[:1]]), axis=0).T).sum())
     cv2.imwrite(str(db.PHOTOS / f"{m.photo_id}_rect.jpg"), rect, [cv2.IMWRITE_JPEG_QUALITY, 75])
@@ -302,10 +333,10 @@ def measure_element_markers(el_id: int, m: MeasureMarkersIn, session: Session = 
     session.refresh(meas)
     markers_rect = [np.round(plane.img_to_mm(c) - origin, 1).tolist() for c in plane.corners_px]
     return dict(measurement_id=meas.id, method="markers", outline_mm=p.tolist(),
-                outline_px=np.round(plane.mm_to_img(p), 1).tolist(), perimeter_mm=round(per, 1),
+                outline_px=np.round(plane.mm_to_img(p * np.array([1.0, -1.0])), 1).tolist(), perimeter_mm=round(per, 1),
                 bbox_mm=(p.min(0).tolist(), p.max(0).tolist()), corners=corners_out, quality=q,
                 rect_url=f"/files/photos/{m.photo_id}_rect.jpg", rect_size=[rect.shape[1], rect.shape[0]],
-                rect_to_mm=[[1, 0, float(origin[0])], [0, 1, float(origin[1])]], markers_rect_px=markers_rect)
+                rect_to_mm=[[1, 0, float(origin[0])], [0, -1, -float(origin[1])]], markers_rect_px=markers_rect)
 
 
 class AcceptIn(BaseModel):
@@ -324,7 +355,7 @@ def accept_measurement(el_id: int, a: AcceptIn, session: Session = Depends(db.ge
         meas.params = dict(meas.params or {}, edited=True, outline_auto_mm=meas.outline_mm)
         meas.outline_mm = edited
         session.add(meas)
-    el.outline_mm = meas.outline_mm
+    el.outline_mm = _clean_outline(meas.outline_mm)
     el.measurement_id = meas.id
     el.method = meas.method
     el.status = "izmjeren"
@@ -347,17 +378,19 @@ def export_job(job_id: int, session: Session = Depends(db.get_session)):
     out = db.JOBS / str(job_id)
     out.mkdir(parents=True, exist_ok=True)
     results, js = [], []
-    from jastuk_cv.measure import finish_polyline
     for e in elems:
         p, corners = finish_polyline(np.asarray(e.outline_mm, float))
         per = float(np.hypot(*np.diff(np.vstack([p, p[:1]]), axis=0).T).sum())
         layer = (e.code or e.name or f"ELEMENT {e.id}").upper()
         results.append(dict(key=f"el{e.id}", layer=layer, file="", poly_mm=p, corners=corners, perimeter_mm=per,
-                            bbox_mm=(p.min(0).tolist(), p.max(0).tolist())))
+                            bbox_mm=(p.min(0).tolist(), p.max(0).tolist()), features=e.features or []))
         js.append(dict(element_id=e.id, layer=layer, kind=e.kind, thickness_mm=e.thickness_mm, method=e.method,
-                       perimeter_mm=round(per, 1), bbox_mm=results[-1]["bbox_mm"], poly_mm=np.round(p, 2).tolist()))
+                       perimeter_mm=round(per, 1), bbox_mm=results[-1]["bbox_mm"], poly_mm=np.round(p, 2).tolist(),
+                       features=e.features or [], dodaci=FT.bom(p, e.features or [])))
     outputs.write_elements_1_1(results, str(out / "elementi_1_1"))
     outputs.write_strip_offset(results, str(out / "elementi_traka_offset"))
     (out / "konture_mm.json").write_text(json.dumps(js, ensure_ascii=False, indent=1), encoding="utf-8")
-    names = ["elementi_1_1.dxf", "elementi_1_1.pdf", "elementi_traka_offset.dxf", "elementi_traka_offset.pdf", "konture_mm.json"]
+    rows = outputs.features_table(results)
+    (out / "dodaci.csv").write_text("element;dodatak;kolicina;jedinica\n" + "".join(f"{a};{b};{c};{d}\n" for a, b, c, d in rows), encoding="utf-8")
+    names = ["elementi_1_1.dxf", "elementi_1_1.pdf", "elementi_traka_offset.dxf", "elementi_traka_offset.pdf", "konture_mm.json", "dodaci.csv"]
     return dict(files=[dict(name=n, url=f"/files/jobs/{job_id}/{n}") for n in names], n_elements=len(elems))

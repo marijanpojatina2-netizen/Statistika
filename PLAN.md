@@ -365,6 +365,9 @@ Za svaki element radionica treba:
 - **Dno** = lice (ili lice s otvorom za patent), s opcijom druge tkanine (mrežasta).
 - **Trake / bočnice** = razvijeni opseg × debljina + dodatak, podijeljen na segmente prema
   uglovima (sadašnja `TRAKA` u `outputs.py`), s oznakama uglova i položajem patenta.
+- **Dodaci** (cif, keder, čičak po rubu; kopče, rupe, rupice, gumbi, vezice, napomene kao točke):
+  crtaju se prstom u nacrtu elementa, svaki na svom DXF sloju, cif/keder označeni i na traci, količine
+  u `dodaci.csv`. **Gotovo.**
 - **Zarezi (notches)** na licu i traci na istim duljinama luka da se šav složi.
 - **Smjer tkanine** (strelica) i oznaka lica/naličja.
 - **Spužva**: obris bez dodatka, s pravilom radionice (npr. +0 ili −3 mm), debljina, vrsta.
@@ -393,6 +396,7 @@ Za svaki element radionica treba:
 | `element.json` | sve u mm za arhivu/druge alate |
 
 Akcije:
+- [x] Dodaci u `outputs.py`: slojevi, simboli, natpisi, oznake na traci, popis dodataka u PDF-u i CSV-u.
 - [ ] Proširiti `outputs.py`: dodatak za šav po tipu, zarezi, smjer tkanine, tekst u DXF-u.
 - [ ] Trake: podjela po uglovima s tolerancijom, otvor za patent, oznake na traci.
 - [ ] Spužva: zasebni sloj i list.
@@ -590,7 +594,8 @@ Još bi dobro došlo, ali ne blokira: s kojeg su broda uzorci u `fotke/` i koji 
    za fazu 3.
 5. ~~Faza 1 i 2 u prvoj radnoj verziji.~~ Gotovo: `api/` + `app/`, cijeli tijek posao → crtanje →
    mjerenje → izvoz radi u pregledniku.
-6. ~~Faza 3, metoda B: markeri, PDF za tisak, mjerenje jednim dodirom, ručna korekcija konture.~~
+6. ~~Dodaci u nacrtu (cif, kopče, rupe, gumbi…): ekran Nacrt, DXF slojevi, traka, popis.~~ Gotovo.
+7. ~~Faza 3, metoda B: markeri, PDF za tisak, mjerenje jednim dodirom, ručna korekcija konture.~~
    Gotovo u kodu i na sintetičkoj sceni. Sljedeće: ispiši `markeri/aruco_5x5_80mm_a4.pdf`, slikaj
    S25 Ultrom nekoliko jastuka i ležajeva s markerima i pošalji fotografije; na njima se podešava
    segmentacija i mjeri stvarna točnost. Zatim kalibracija kamere (šahovnica), prijava, offline red.

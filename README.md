@@ -10,7 +10,7 @@ krojeve. Ovo je prva metoda mjerenja iz [`PLAN.md`](PLAN.md) (metoda A); ostatak
 ```bash
 pip install -e ".[test]"          # ili: pip install opencv-python-headless numpy scipy scikit-image shapely ezdxf matplotlib
 python3 -m jastuk_cv fotke/elementi.json --out izlaz
-python3 -m pytest                  # 27 testova, ~35 s (regresija na 4 fotografije, geometrija, markeri na sintetičkoj sceni, API)
+python3 -m pytest                  # 32 testa, ~35 s (regresija na 4 fotografije, geometrija, markeri na sintetičkoj sceni, dodaci, API)
 python3 data/seed_boats.py         # provjera startnog popisa brodova
 ```
 
@@ -38,6 +38,19 @@ kutu snimanja i rasporedu markera; to se mjeri u pilotu. Za kalibraciju kamere (
 tu `markeri/kalibracija_sahovnica_a4.pdf`; koristi se u sljedećem koraku.
 
 Ograničenje: jedna fotografija mjeri ravnu plohu. Zakrivljeni nasloni idu na foliju (metoda A).
+
+## Nacrt: dodaci na elementu (cif, keder, čičak, kopče, rupe, rupice, gumbi, vezice, napomene)
+
+Nakon prihvata konture otvara se **Nacrt** elementa: obris u mm s mrežom 100 mm na koji se prstom
+dodaju dodaci. Rubni dodaci (cif, keder, čičak) idu po obrisu između dva dodira, u smjeru obrisa od
+označenog početka; točkasti (kopča, rupa, rupica, gumb, vezica, napomena) jednim dodirom. Svaki ima
+parametre (širina cifa i na kojoj je strani, promjer rupe, vrsta kopče, tekst napomene…) i može se
+povlačiti, kopirati i brisati. Definicije tipova su u `jastuk_cv/features.py`.
+
+U izvozu: svaki tip dodatka je na svom DXF sloju (`<ELEMENT> ZIP`, `… KOPCA`, `… RUPA` …) sa simbolom
+i natpisom, cif i keder su označeni i **na traci** (početak i kraj po duljini luka), PDF ima stranicu s
+popisom dodataka, a `dodaci.csv` daje količine po elementu (metri cifa/kedera/čička, komadi kopči,
+rupa, gumba) za nabavu.
 
 ## Aplikacija (faza 1): poslužitelj + web sučelje za tablet
 
@@ -88,6 +101,7 @@ osi x** (npr. oznaka "50") i **jedna točka unutar uzorka**. Alternativno se mog
 | `jastuk_cv/contour.py` | kontura uzorka iz ispravljene slike, glađenje, uglovi |
 | `jastuk_cv/measure.py` | javni API `measure_grid`, `GridMeasurement`, izravnavanje kuta na 90° |
 | `jastuk_cv/markers.py` | metoda B: detekcija ArUco markera, prilagodba ravnine, ispravljanje, segmentacija na dodir, dorada ruba |
+| `jastuk_cv/features.py` | dodaci na elementu: tipovi, geometrija po obrisu (duljina luka), popis materijala |
 | `markeri/` | PDF za tisak: 12 ArUco markera 80 mm (A4, 3 str.) i šahovnica za kalibraciju; `tools/make_markers.py` |
 | `jastuk_cv/outputs.py` | DXF/PDF 1:1, offset, trake |
 | `jastuk_cv/cli.py` | naredbeni redak (`python3 -m jastuk_cv`) |
@@ -107,7 +121,8 @@ osi x** (npr. oznaka "50") i **jedna točka unutar uzorka**. Alternativno se mog
 | `elementi_1_1.pdf` | pregled + stranica po elementu, mreža 100/50 mm, gabaritne kote |
 | `elementi_traka_offset.dxf` | po elementu: `… KONTURA` (referenca), `… OFFSET` (+10 mm prema van, round join), `… TRAKA` (traka 90 mm × opseg s oznakama uglova) |
 | `elementi_traka_offset.pdf` | stranica po elementu: offset + traka s oznakama |
-| `konture_mm.json` | polilinije (mm), opseg, gabarit, položaji uglova, ocjena kvalitete |
+| `konture_mm.json` | polilinije (mm), opseg, gabarit, položaji uglova, ocjena kvalitete, dodaci |
+| `dodaci.csv` | (izvoz posla) količine dodataka po elementu |
 | `kontrola/*_ispravljeno_kontura.png` | ispravljena fotografija (1 px = 1 mm) s mrežom, detektiranim presjecištima i konturom |
 | `kontrola/*_detekcija_mreze.png` | original s detektiranim linijama mreže, presjecištima i konturom |
 

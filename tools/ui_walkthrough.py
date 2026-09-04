@@ -80,7 +80,9 @@ with sync_playwright() as p:
     page.screenshot(path=f"{OUT}/07_mjeri_rezultat.png")
     txt = page.inner_text("#result")
     print("REZULTAT:", txt.replace("\n", " | ")[:300])
-    page.click("#accept")   # prihvati
+    page.click("#accept")   # prihvati -> otvara se nacrt
+    page.wait_for_selector("#save")
+    page.click("text=Natrag")
     page.wait_for_selector("text=izmjeren")
     page.click("#exp")
     page.wait_for_selector("#files a")
@@ -119,14 +121,34 @@ with sync_playwright() as p:
     n0 = int(page.inner_text("#result").split("točaka")[1].split()[0])
     box = page.locator("#pc").bounding_box()
     page.click("[data-t=del]")
-    # točka konture: uzmi središte + pomak do ruba preko evaluacije nije dostupno; klikni na gornji rub konture (traži svijetloplavi piksel)
-    pts = page.evaluate("""() => { const c = document.querySelector('#pc'); const x = c.getContext('2d');
-        const d = x.getImageData(0, 0, c.width, c.height).data; const out = []; const step = Math.max(1, Math.floor(c.width / 200));
-        for (let y = 0; y < c.height; y += step) for (let xx = 0; xx < c.width; xx += step) { const i = (y * c.width + xx) * 4;
-          if (d[i] < 40 && d[i+1] > 200 && d[i+2] > 220) out.push([xx / (c.width / c.clientWidth), y / (c.height / c.clientHeight)]); }
-        return out; }""")
-    assert len(pts) > 50, "kontura nije nacrtana"
+    n_pts = int(page.inner_text("#result").split("točaka")[1].split()[0])
+    assert 10 < n_pts < 150, f"neobičan broj točaka konture: {n_pts}"
+    page.click("[data-t=move]")
     print("JS GREŠKE nakon markera:", errors or "nema")
+
+    # ---- nacrt: prihvati konturu -> ekran dodataka; cif po rubu (2 dodira na obrisu), kopča (1 dodir), spremi
+    page.click("#accept")
+    page.wait_for_selector("#list")
+    page.wait_for_timeout(300)
+    # točke na obrisu iz geometrije (kuk window.__nacrt): cif od 10 % do 35 % opsega
+    box = page.locator("#c").bounding_box()
+    p0 = page.evaluate("() => { const n = window.__nacrt; return n.toS(n.pointAtS(0.10 * n.L())); }")
+    p1 = page.evaluate("() => { const n = window.__nacrt; return n.toS(n.pointAtS(0.35 * n.L())); }")
+    page.click("[data-t=zip]")
+    page.touchscreen.tap(box["x"] + p0[0], box["y"] + p0[1]); page.wait_for_timeout(150)
+    page.touchscreen.tap(box["x"] + p1[0], box["y"] + p1[1]); page.wait_for_timeout(150)
+    ctr = page.evaluate("() => { const n = window.__nacrt; const xs = n.poly.map(p => p[0]), ys = n.poly.map(p => p[1]); return n.toS([(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2]); }")
+    cx, cy = ctr
+    page.click("[data-t=kopca]")
+    page.touchscreen.tap(box["x"] + cx, box["y"] + cy); page.wait_for_timeout(150)
+    page.screenshot(path=f"{OUT}/11_nacrt_dodaci.png")
+    print("NACRT:", page.inner_text("#list").replace("\n", " | ")[:200])
+    page.click("#save")
+    page.wait_for_selector("text=Nacrt (2)")
+    page.click("#exp")
+    page.wait_for_selector("#files a")
+    print("DATOTEKE 2:", page.inner_text("#files").replace("\n", " | "))
+    print("JS GREŠKE nakon nacrta:", errors or "nema")
     b.close()
     sys.exit(0)
     print("JS GREŠKE:", errors or "nema")

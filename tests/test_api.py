@@ -67,7 +67,7 @@ def test_full_flow(client):
     assert ex["n_elements"] == 2
     for f in ex["files"]:
         r = client.get(f["url"])
-        assert r.status_code == 200 and len(r.content) > 500, f
+        assert r.status_code == 200 and len(r.content) > (20 if f["name"].endswith(".csv") else 500), f
     js = client.get(f"/files/jobs/{jid}/konture_mm.json").json()
     assert {x["layer"] for x in js} == {"MALA KUPA STOLA", "KLUPA"}
 
@@ -127,3 +127,25 @@ def test_markers_flow(client, tmp_path):
         ph2 = client.post("/api/photos", files={"file": ("p.jpg", fh, "image/jpeg")}).json()
     r = client.post(f"/api/elements/{el['id']}/measure_markers", json={"photo_id": ph2["photo_id"], "seed_px": [450, 600]})
     assert r.status_code == 422 and "markera" in r.json()["detail"]
+
+
+def test_features_api(client):
+    types = client.get("/api/feature_types").json()
+    assert {t["type"] for t in types} >= {"zip", "keder", "kopca", "rupa", "gumb", "napomena"}
+    j = client.post("/api/jobs", json={"boat_name": "Dodaci"}).json()
+    el = client.post(f"/api/jobs/{j['job']['id']}/elements", json={"code": "SJEDALO", "outline_mm": [[0, 0], [1000, 0], [1000, 500], [0, 500]]}).json()
+    feats = [{"type": "zip", "s0": 100, "s1": 900, "params": {"sirina": 8}},
+             {"type": "kopca", "p": [50, 30]}, {"type": "kopca", "p": [950, 30]},
+             {"type": "rupa", "p": [500, 250], "params": {"promjer": 60}}]
+    el2 = client.patch(f"/api/elements/{el['id']}", json={"features": feats}).json()
+    assert len(el2["features"]) == 4 and el2["features"][1]["params"]["vrsta"] == "druker"   # zadani parametri popunjeni
+    assert el2["features"][0]["params"] == {"sirina": 8, "strana": "traka"} and el2["features"][0]["id"] == "f1"
+    assert client.patch(f"/api/elements/{el['id']}", json={"features": [{"type": "nepoznato", "p": [0, 0]}]}).status_code == 422
+    assert client.patch(f"/api/elements/{el['id']}", json={"features": [{"type": "zip", "s0": 1}]}).status_code == 422
+    ex = client.post(f"/api/jobs/{j['job']['id']}/export").json()
+    names = {f["name"] for f in ex["files"]}
+    assert "dodaci.csv" in names
+    csv = client.get(f"/files/jobs/{j['job']['id']}/dodaci.csv").text
+    assert "SJEDALO;cif (patentni zatvarač);0.8;m" in csv and "SJEDALO;kopča;2;kom" in csv
+    js = client.get(f"/files/jobs/{j['job']['id']}/konture_mm.json").json()
+    assert js[0]["dodaci"]["kopca"] == 2 and js[0]["dodaci"]["zip"] == 800

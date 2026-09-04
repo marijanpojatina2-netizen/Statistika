@@ -45,3 +45,4 @@ table { border-collapse:collapse; width:100%; } td, th { padding:6px 8px; border
 .tools button.on { background:var(--brand); color:#fff; border-color:var(--brand); }
 #methods label input { display:none; }
 [hidden] { display:none !important; }
+tr.on td { background:#fff8e6; }

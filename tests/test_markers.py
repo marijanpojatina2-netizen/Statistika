@@ -47,7 +47,7 @@ def test_segmentation_edge_accuracy(scene):
     assert rect.shape[0] <= 3700 and rect.shape[1] <= 3700
     seed_rect = pl.img_to_mm(seed_px)[0] - origin
     poly_px, mask = segment_seed(rect, seed_rect, exclude_mask=markers_mask(rect, pl, origin))
-    p, corners = finish_polyline(poly_px + origin)
+    p, corners = finish_polyline(poly_px + origin, sigma=4.0)
     t = truth_in_plane(pl, truth, Hp, S)
     signed = np.array([cv2.pointPolygonTest(t.astype(np.float32), (float(x), float(y)), True) for x, y in p])
     assert abs(signed.mean()) < 3.0                        # sustavna pristranost ruba

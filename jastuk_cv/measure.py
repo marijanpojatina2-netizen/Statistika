@@ -77,12 +77,12 @@ def square_corner(p: np.ndarray, corner_mm: np.ndarray, r_cut: float = 140.0, r_
     return np.vstack([x[None, :], after])
 
 
-def finish_polyline(poly_mm: np.ndarray, square_corner_mm=None):
+def finish_polyline(poly_mm: np.ndarray, square_corner_mm=None, sigma: float = 2.0):
     """Od sirove konture (mm) do glatke polilinije s uglovima:
-    uzorkovanje 1 mm -> Gauss (sigma 2 mm) -> Douglas-Peucker 0.3 mm -> CCW -> (kut na 90°)
-    -> početak = točka najbliža ishodištu papira, ali nikad usred ugla."""
+    uzorkovanje 1 mm -> Gauss (sigma mm; 2 za foliju, 4 za markere gdje je rub iz fotografije šumovitiji)
+    -> Douglas-Peucker 0.3 mm -> CCW -> (kut na 90°) -> početak = točka najbliža ishodištu, ali nikad usred ugla."""
     p = resample_closed(poly_mm, 1.0)
-    p = smooth_closed(p, 2.0)
+    p = smooth_closed(p, sigma)
     p = simplify_closed(p, 0.3)
     p = ensure_ccw(p)
     if square_corner_mm is not None:

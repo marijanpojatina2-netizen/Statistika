@@ -41,5 +41,20 @@ def init():
     for d in (VAR, PHOTOS, JOBS):
         d.mkdir(parents=True, exist_ok=True)
     SQLModel.metadata.create_all(engine)
+    migrate()
     with Session(engine) as s:
         seed_boats(s)
+
+
+# stupci dodani nakon prve verzije: (tablica, stupac, SQL tip)
+MIGRATIONS = [("elements", "features", "JSON")]
+
+
+def migrate():
+    """create_all ne dodaje stupce u postojeće tablice; ovo ih doda ako nedostaju (SQLite)."""
+    from sqlalchemy import inspect, text
+    insp = inspect(engine)
+    with engine.begin() as conn:
+        for table, col, typ in MIGRATIONS:
+            if table in insp.get_table_names() and col not in [c["name"] for c in insp.get_columns(table)]:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {typ}"))

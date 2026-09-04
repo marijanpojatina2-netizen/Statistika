@@ -50,6 +50,7 @@ class Element(SQLModel, table=True):
     notes: str = ""
     sketch: Optional[list] = Field(default=None, sa_column=Column(JSON))
     outline_mm: Optional[list] = Field(default=None, sa_column=Column(JSON))
+    features: Optional[list] = Field(default=None, sa_column=Column(JSON))   # dodaci: cif, keder, kopče, rupe... (jastuk_cv.features)
     method: str = ""                # grid | markers | manual
     status: str = "nacrtan"         # nacrtan | izmjeren | potvrđen
     measurement_id: Optional[int] = None
