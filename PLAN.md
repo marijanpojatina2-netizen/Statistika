@@ -304,6 +304,8 @@ brojeva, generira se obris. Koristi se i za brzu korekciju: "gabarit je 1240 × 
 
 ### 6.5 Metoda D (kasnije): LiDAR / fotogrametrija
 
+- Kako ste na Androidu, LiDAR znači kupnju jednog iPada Pro samo za tu svrhu; alternativa na
+  Androidu je ARCore Depth API (slabija točnost) ili fotogrametrija ispod.
 - iPad Pro s LiDAR-om + ARKit mesh → izdvajanje plohe → razvijanje u ravninu (developable
   surface) → skaliranje ručnim mjerama.
 - Alternativa bez LiDAR-a: fotogrametrija iz 10–20 fotografija s markerima (OpenMVG/Meshroom).
@@ -465,7 +467,7 @@ workshop_rules(id, kind, fabric, seam_mm, foam_offset_mm, cover_shrink_pct, roll
 
 ### Faza 0: priprema (1 tjedan)
 
-- [ ] Odluke iz poglavlja 13 (tablet, ploter, širine rola, prvi modeli).
+- [x] Odluke iz poglavlja 13 (tablet, ploter, širine rola, prvi modeli): donesene.
 - [ ] Repo: monorepo `app/` (PWA), `api/` (FastAPI), `cv/` (postojeći `krojevi/` prepakiran),
       `docs/`. CI: lint + testovi na postojećim fotografijama.
 - [ ] Wireframe ekrana, standard šifri elemenata, popis pravila radionice.
