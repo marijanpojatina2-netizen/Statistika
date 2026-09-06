@@ -113,7 +113,7 @@ export default function StatsTab({ game, stats, usName, oppName }) {
   const shots = positionedShots(game)
 
   const cols = [
-    ['Č', (r) => (game.trackTime ? r.min : r.periods)],
+    [game.trackTime ? 'MIN' : 'Č', (r) => (game.trackTime ? r.min : r.periods)],
     ['PTS', (r) => r.pts, 'big'],
     ['2P', (r) => `${r.fg2m}-${r.fg2a}`],
     ['3P', (r) => `${r.fg3m}-${r.fg3a}`],
@@ -273,7 +273,7 @@ export default function StatsTab({ game, stats, usName, oppName }) {
               <td className="l"><span className="pname">UKUPNO</span></td>
               {cols.map(([h, fn, kind]) => (
                 <td key={h} className={kind === 'big' ? 'big' : ''}>
-                  {h === 'Č' || h === '+/-' ? '' : fn(t)}
+                  {h === 'Č' || h === 'MIN' || h === '+/-' ? '' : fn(t)}
                 </td>
               ))}
             </tr>

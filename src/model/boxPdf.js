@@ -49,7 +49,7 @@ function drawBox(ctx, game, stats) {
 
   // stupci
   const cols = [
-    ['Č', (r) => (game.trackTime ? r.min : r.periods), 56],
+    [game.trackTime ? 'MIN' : 'Č', (r) => (game.trackTime ? r.min : r.periods), 56],
     ['PTS', (r) => r.pts, 62, 'big'],
     ['2P', (r) => `${r.fg2m}-${r.fg2a}`, 78],
     ['3P', (r) => `${r.fg3m}-${r.fg3a}`, 78],
@@ -114,7 +114,7 @@ function drawBox(ctx, game, stats) {
     let x = x0 + nameW
     ctx.textAlign = 'center'
     for (const [h, fn, w, kind] of cols) {
-      const skip = isTotal && (h === 'Č' || h === '+/-')
+      const skip = isTotal && (h === 'Č' || h === 'MIN' || h === '+/-')
       ctx.font = `${kind === 'big' || isTotal ? 700 : 500} 25px ${FU}`
       ctx.fillStyle = isTotal ? COL.text : cellColor(kind, r)
       if (!skip) ctx.fillText(String(fn(r)), x + w / 2, y)
