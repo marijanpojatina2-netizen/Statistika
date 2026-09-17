@@ -9,7 +9,7 @@ import { COURT_W, COURT_H } from './court.js'
 
 /** Iz zalijepljenog linka ili broja izvuče ID utakmice. */
 export function parseFibaId(input) {
-  const m = String(input || '').match(/(\d{5,10})/g)
+  const m = String(input || '').match(/(\d{4,12})/g)
   return m ? m[m.length - 1] : null
 }
 

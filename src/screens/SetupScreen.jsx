@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { newId } from '../model/events.js'
+import { parseFibaId } from '../model/fiba.js'
 import { newGame } from '../model/game.js'
 import Crest from '../components/Crest.jsx'
 import CloudBadge from '../components/CloudBadge.jsx'
@@ -15,6 +16,10 @@ export default function SetupScreen({
   const [fibaErr, setFibaErr] = useState(null)
   const connectFiba = async () => {
     if (!fibaInput.trim() || !onFibaStart) return
+    if (!parseFibaId(fibaInput)) {
+      setFibaErr('U zalijepljenom tekstu nema broja utakmice — link se vjerojatno odrezao pri kopiranju. Zalijepi CIJELI link (završava brojem, npr. …/u/HKS/2898003/) ili upiši samo broj, npr. 2898003.')
+      return
+    }
     setFibaBusy(true)
     setFibaErr(null)
     try { await onFibaStart(fibaInput) } catch (e) {
