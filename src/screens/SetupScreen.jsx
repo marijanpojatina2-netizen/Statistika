@@ -8,8 +8,20 @@ const blank = () => ({ id: newId(), number: '', name: '' })
 
 export default function SetupScreen({
   onStart, templates = [], onSaveTemplate, onDeleteTemplate, onOpenArchive, archiveCount = 0,
-  cloud, onSync, coach = '', onLogout,
+  cloud, onSync, coach = '', onLogout, onFibaStart,
 }) {
+  const [fibaInput, setFibaInput] = useState('')
+  const [fibaBusy, setFibaBusy] = useState(false)
+  const [fibaErr, setFibaErr] = useState(null)
+  const connectFiba = async () => {
+    if (!fibaInput.trim() || !onFibaStart) return
+    setFibaBusy(true)
+    setFibaErr(null)
+    try { await onFibaStart(fibaInput) } catch {
+      setFibaErr('Ne mogu dohvatiti utakmicu — provjeri link/broj i internet.')
+      setFibaBusy(false)
+    }
+  }
   const [homeName, setHomeName] = useState('')
   const [awayName, setAwayName] = useState('')
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10))
@@ -138,6 +150,30 @@ export default function SetupScreen({
               Odjava
             </button>
           )}
+        </div>
+      )}
+
+      {onFibaStart && (
+        <div className="panel" style={{ padding: '18px 20px' }}>
+          <div className="section-title" style={{ marginBottom: 6 }}>Službena utakmica · FIBA live</div>
+          <div className="muted" style={{ fontSize: 13, marginBottom: 10 }}>
+            Zalijepi link (ili broj) sa službene statistike lige — unosi stižu sami sa
+            zapisničkog stola, a trener samo tapka pozicije šuteva koje zapisnik nema.
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <input
+              type="text"
+              className="grow"
+              placeholder="npr. fibalivestats…/u/HKS/2898003/ ili 2898003"
+              value={fibaInput}
+              onChange={(e) => setFibaInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') connectFiba() }}
+            />
+            <button className="btn primary" style={{ minWidth: 120 }} disabled={fibaBusy || !fibaInput.trim()} onClick={connectFiba}>
+              {fibaBusy ? 'Povezujem…' : 'Poveži'}
+            </button>
+          </div>
+          {fibaErr && <div className="hint err" style={{ marginTop: 8 }}>{fibaErr}</div>}
         </div>
       )}
 

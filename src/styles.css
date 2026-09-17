@@ -642,3 +642,19 @@ table.stats tr.total .pname { font-weight: 700; color: var(--text); }
 .chip b { font-weight: 700; color: var(--text); }
 .chip.hotc { border-color: var(--red-bd); color: var(--red-ink); }
 .chip.posc { border-color: var(--green-bd); color: var(--green-ink); }
+
+/* --- FIBA live ------------------------------------------------------------ */
+.fiba-panel { padding: 2px; }
+.fiba-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--green); animation: cloudPulse 1.4s ease-in-out infinite;
+}
+.fiba-dot.err { background: var(--gold); }
+.fiba-q {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px; border-radius: 10px;
+  background: var(--field); border: 1px solid var(--line-16);
+  font: 500 13.5px var(--f-ui); color: var(--text-3);
+}
+.fiba-q.first { border-color: var(--blue-bd-hi); background: var(--blue-t12); }
+.fiba-q .tag { margin-left: auto; color: var(--blue-hi); font-weight: 700; font-size: 12px; }

@@ -20,7 +20,7 @@ function Shell() {
   const {
     game, setGame, resetGame, setTrackTime, stats,
     archive, templates, finishGame, deleteArchived, updateArchivedGame, saveTemplate, deleteTemplate,
-    cloud, syncNow, coach, logout,
+    cloud, syncNow, coach, logout, startFiba,
   } = useGame()
   const [editInfo, setEditInfo] = useState(false)
   const [view, setView] = useState('game')      // game | menu | archive
@@ -103,6 +103,7 @@ function Shell() {
           onSync={syncNow}
           coach={coach}
           onLogout={logout}
+          onFibaStart={async (v) => { await startFiba(v); go('game') }}
         />
         </div>
       </div>

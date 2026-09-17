@@ -12,6 +12,7 @@ import PlayerCard from '../components/PlayerCard.jsx'
 import PlayerChip from '../components/PlayerChip.jsx'
 import PromptModal from '../components/PromptModal.jsx'
 import FreeThrowBar from '../components/FreeThrowBar.jsx'
+import FibaPanel from '../components/FibaPanel.jsx'
 import ActionPad from '../components/ActionPad.jsx'
 import LineupPanel from '../components/LineupPanel.jsx'
 import EventEditor from '../components/EventEditor.jsx'
@@ -29,7 +30,9 @@ export default function GameScreen({ onExit }) {
   const {
     game, clock, stats, push, pushInto, undo, updateEvent, deleteEvent, removeFromGroup,
     setLineup, addPlayer, toggleClock, setClock, nextPeriod,
+    setFibaPos, fibaSync,
   } = useGame()
+  const fibaMode = !!game?.fibaId
 
   const [tab, setTab] = useState('unos')
   const [selectedId, setSelectedId] = useState(null)
@@ -192,6 +195,7 @@ export default function GameScreen({ onExit }) {
 
   /** Klik na akcijski gumb — dovrši odmah ako je igrač odabran, inače čekaj igrača. */
   const act = useCallback((spec) => {
+    if (fibaMode) { say('FIBA live — unosi stižu sa službenog zapisnika', 'good'); return }
     if (spec.kind === 'team') {
       record(spec.specs, { toast: spec.toast })
       return
@@ -223,11 +227,17 @@ export default function GameScreen({ onExit }) {
 
   // --- teren ----------------------------------------------------------------
   const pickPosition = useCallback((x, y) => {
+    if (fibaMode) {
+      const q = (game.posQueue || [])[0]
+      if (q) { setFibaPos(q.actionNumber, { x, y }); say('Pozicija upisana', 'good') }
+      else say('Nema šuteva koji čekaju poziciju')
+      return
+    }
     clearChainUnlessFt()
     setPendingAction(null)
     setPendingShot({ x, y, playerId: selectedId })
     if (navigator.vibrate) { try { navigator.vibrate(12) } catch { /* ignore */ } }
-  }, [selectedId, clearChainUnlessFt])
+  }, [selectedId, clearChainUnlessFt, fibaMode, game.posQueue, setFibaPos]) // eslint-disable-line
 
   const resolveShot = (made) => {
     const ps = pendingShot
@@ -242,6 +252,7 @@ export default function GameScreen({ onExit }) {
 
   // --- tap na igrača --------------------------------------------------------
   const tapPlayer = (id) => {
+    if (fibaMode) return
     if (Date.now() - suppressTap.current < 400) return
     if (pendingAction) { completeAction(pendingAction, id); return }
     if (pendingShot && !pendingShot.playerId) { setPendingShot({ ...pendingShot, playerId: id }); return }
@@ -351,6 +362,7 @@ export default function GameScreen({ onExit }) {
 
   /** Ručka: povlačenje kreće odmah — touch-action none jamči da gesta preživi. */
   const startHandleDrag = (e, id, fromBench) => {
+    if (fibaMode) return
     if (e.button != null && e.button !== 0) return
     e.preventDefault()
     e.stopPropagation()
@@ -393,6 +405,7 @@ export default function GameScreen({ onExit }) {
 
   /** Prst na tijelu kartice: povlačenje kreće nakon zadržavanja, kraći pomak je skrolanje. */
   const startTouchDrag = (e, id, fromBench) => {
+    if (fibaMode) return
     if (handleDragRef.current) return
     if (e.touches.length !== 1) return
     const t0 = e.touches[0]
@@ -438,6 +451,7 @@ export default function GameScreen({ onExit }) {
 
   /** Miš: povlačenje kreće nakon 12 px, bez zadržavanja. */
   const startMouseDrag = (e, id, fromBench) => {
+    if (fibaMode) return
     if (e.pointerType && e.pointerType !== 'mouse') return
     if (e.button != null && e.button !== 0) return
     const sx = e.clientX
@@ -587,13 +601,25 @@ export default function GameScreen({ onExit }) {
 
   // --- teren -----------------------------------------------------------------
   const courtShots = useMemo(() => positionedShots(game), [game.events]) // eslint-disable-line
+  const fibaQueue = fibaMode ? (game.posQueue || []) : []
   const courtBlock = (
-    <div className="court-box">
-      <Court shots={courtShots} pending={pendingShot} onPick={pickPosition} />
-    </div>
+    <>
+      {fibaMode && (
+        <div className={`hint ${fibaQueue.length ? 'ok' : ''}`} style={{ marginBottom: 10 }}>
+          {fibaQueue.length
+            ? `Tapni odakle: ${label(fibaQueue[0].playerId)} · ${fibaQueue[0].value}P ${fibaQueue[0].made ? '✓' : '✗'} — u redu još ${fibaQueue.length}`
+            : 'FIBA live · unosi stižu automatski'}
+        </div>
+      )}
+      <div className="court-box">
+        <Court shots={courtShots} pending={pendingShot} onPick={pickPosition} />
+      </div>
+    </>
   )
 
-  const pad = (
+  const pad = fibaMode ? (
+    <FibaPanel game={game} sync={fibaSync} label={label} />
+  ) : (
     <ActionPad
       game={game}
       act={act}
@@ -630,14 +656,14 @@ export default function GameScreen({ onExit }) {
             <button
               className="btn accent"
               style={{ minHeight: 34, fontFamily: 'var(--f-cond)', fontSize: 20, fontWeight: 700, minWidth: 104 }}
-              onClick={toggleClock}
-              onContextMenu={(e) => { e.preventDefault(); setClockEdit(true) }}
+              onClick={fibaMode ? undefined : toggleClock}
+              onContextMenu={fibaMode ? undefined : (e) => { e.preventDefault(); setClockEdit(true) }}
             >
               {fmtClock(clock.secs)}
             </button>
           )}
           <div className="row" style={{ gap: 6 }}>
-            {confirmNext ? (
+            {fibaMode ? null : confirmNext ? (
               <>
                 <button className="btn good" style={{ minHeight: 36 }} onClick={() => { nextPeriod(); setConfirmNext(false); say('Nova četvrtina') }}>Potvrdi</button>
                 <button className="btn ghost" style={{ minHeight: 36 }} onClick={() => setConfirmNext(false)}>Odustani</button>
@@ -647,7 +673,7 @@ export default function GameScreen({ onExit }) {
                 {isMobile ? `${clock.period + 1}. Č →` : 'Sljedeća četvrtina →'}
               </button>
             )}
-            {game.trackTime && !confirmNext && (
+            {game.trackTime && !confirmNext && !fibaMode && (
               <button className="btn ghost" style={{ minHeight: 36 }} onClick={() => setClockEdit(true)}>Sat</button>
             )}
           </div>
@@ -676,7 +702,7 @@ export default function GameScreen({ onExit }) {
           {isMobile ? 'Stat' : 'Statistika'}
         </button>
         <div className="grow" />
-        <button className="btn danger" style={{ minHeight: 38, letterSpacing: '.06em', fontWeight: 700, fontFamily: 'var(--f-ui)', fontSize: 13 }} onClick={doUndo}>↶ UNDO</button>
+        <button className="btn danger" style={{ minHeight: 38, letterSpacing: '.06em', fontWeight: 700, fontFamily: 'var(--f-ui)', fontSize: 13 }} onClick={doUndo} disabled={fibaMode} title={fibaMode ? 'FIBA live — službeni zapisnik je izvor' : undefined}>↶ UNDO</button>
         {fullscreen.supported && (
           <button
             className="btn ghost"

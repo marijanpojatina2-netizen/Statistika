@@ -39,6 +39,8 @@ const post = (path, body) => call(path, {
   body: JSON.stringify(body),
 })
 
+export const cloudFiba = (id) => call(`fiba?id=${encodeURIComponent(id)}`)
+
 export const cloudListGames = () => call('games')
 export const cloudSaveGame = (game) => post('games', game)
 export const cloudDeleteGame = (id) => call(`games?id=${encodeURIComponent(id)}`, { method: 'DELETE' })

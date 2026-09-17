@@ -85,7 +85,10 @@ export function derive(game, now, opts = {}) {
         markPeriod()
         break
       case EV.PERIOD_START:
-        flush(0)
+        // Ako je sigurnosna mreža već prebacila četvrtinu (event nove
+        // četvrtine stigao prije PERIOD_START), NE prazni sat ponovno —
+        // inače bi svima na parketu upisao punu četvrtinu viška.
+        if (ev.period !== period) flush(0)
         period = ev.period
         lastClock = periodSecs
         markPeriod()

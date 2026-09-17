@@ -8,10 +8,11 @@ import {
   loadOutbox, saveOutbox,
 } from '../model/storage.js'
 import {
-  cloudListGames, cloudSaveGame, cloudDeleteGame,
+  cloudFiba, cloudListGames, cloudSaveGame, cloudDeleteGame,
   cloudListTemplates, cloudSaveTemplate, cloudDeleteTemplate,
   getCoach, logoutCloud,
 } from '../model/cloud.js'
+import { convertFiba, parseFibaId } from '../model/fiba.js'
 
 const Ctx = createContext(null)
 export const useGame = () => useContext(Ctx)
@@ -255,6 +256,59 @@ export function GameProvider({ children }) {
     return () => window.removeEventListener('online', on)
   }, [syncNow])
 
+  // --- FIBA live: službeni zapisnik vodi, mi pratimo -----------------------
+
+  const [fibaSync, setFibaSync] = useState({ at: null, err: null })
+
+  const startFiba = useCallback(async (input) => {
+    const id = parseFibaId(input)
+    if (!id) throw new Error('bad-id')
+    const data = await cloudFiba(id)
+    if (!data || !data.tm) throw new Error('bad-data')
+    const next = convertFiba(data, { fibaId: id })
+    next.coach = getCoach() || ''
+    setFibaSync({ at: Date.now(), err: null })
+    setGame(next)
+    return next
+  }, [setGame])
+
+  // periodično osvježavanje dok utakmica traje
+  useEffect(() => {
+    if (!game?.fibaId || game.status === 'finished') return undefined
+    let stop = false
+    const tick = async () => {
+      try {
+        const data = await cloudFiba(game.fibaId)
+        if (stop || !data || !data.tm) return
+        setGame((cur) => {
+          if (!cur || cur.fibaId !== game.fibaId) return cur
+          const next = convertFiba(data, {
+            fibaId: cur.fibaId, pos: cur.fibaPos,
+            date: cur.date, competition: cur.competition, createdAt: cur.createdAt,
+          })
+          return { ...next, coach: cur.coach }
+        })
+        setFibaSync({ at: Date.now(), err: null })
+      } catch (e) {
+        if (!stop) setFibaSync((s) => ({ ...s, err: e?.reason || 'err' }))
+      }
+    }
+    const t = setInterval(tick, 15000)
+    return () => { stop = true; clearInterval(t) }
+  }, [game?.fibaId, game?.status, setGame]) // eslint-disable-line
+
+  /** Trenerova pozicija za šut iz FIBA feeda (po actionNumber). */
+  const setFibaPos = useCallback((actionNumber, xy) => {
+    setGame((g0) => ({
+      ...g0,
+      fibaPos: { ...(g0.fibaPos || {}), [actionNumber]: xy },
+      posQueue: (g0.posQueue || []).filter((q) => q.actionNumber !== actionNumber),
+      events: g0.events.map((e) => (
+        e.group === `fa${actionNumber}` && e.type === EV.SHOT ? { ...e, x: xy.x, y: xy.y } : e
+      )),
+    }))
+  }, [setGame])
+
   // --- arhiva i predlošci ---------------------------------------------------
 
   const finishGame = useCallback(() => {
@@ -311,6 +365,7 @@ export function GameProvider({ children }) {
     game, setGame, clock, stats,
     archive, templates, finishGame, deleteArchived, updateArchivedGame, saveTemplate, deleteTemplate,
     cloud, syncNow, coach: getCoach(), logout: logoutCloud,
+    startFiba, setFibaPos, fibaSync,
     push, pushInto, undo, updateEvent, deleteEvent, removeFromGroup, setLineup, addPlayer,
     toggleClock, setClock, nextPeriod, setTrackTime,
     endGame: () => setGame((g) => ({ ...g, status: 'finished' })),
