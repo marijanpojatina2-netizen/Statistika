@@ -1,10 +1,8 @@
 // Proxy prema FIBA LiveStats (Genius Sports) — njihov server ne dopušta
 // čitanje izravno iz preglednika (CORS), pa aplikacija ide kroz nas.
 // Kešira se 10 s na CDN-u da live praćenje ne tuče njihov servis.
-import { requireAuth } from './_lib/utils.js'
-
+// Bez prijave: proksira isključivo javne podatke lige (i middleware ga pušta).
 export default async function handler(req, res) {
-  if (!requireAuth(req, res)) return
   const id = String(req.query.id || '').replace(/\D/g, '')
   if (!id || id.length < 5 || id.length > 10) return res.status(400).json({ ok: false, error: 'bad-id' })
   try {
