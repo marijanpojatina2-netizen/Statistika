@@ -18,6 +18,7 @@ const OPEN = [
   /^\/login\.html$/,
   /^\/api\/login$/,
   /^\/api\/version$/,
+  /^\/api\/fiba$/,     // proksira samo javne podatke lige — smije bez prijave
   /^\/fonts\.css$/,
   /^\/fonts\//,
   /^\/crest\.(jpg|png)$/,
