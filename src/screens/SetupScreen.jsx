@@ -17,8 +17,9 @@ export default function SetupScreen({
     if (!fibaInput.trim() || !onFibaStart) return
     setFibaBusy(true)
     setFibaErr(null)
-    try { await onFibaStart(fibaInput) } catch {
-      setFibaErr('Ne mogu dohvatiti utakmicu — provjeri link/broj i internet.')
+    try { await onFibaStart(fibaInput) } catch (e) {
+      const why = e && e.reason ? ` (${e.reason})` : ''
+      setFibaErr(`Ne mogu dohvatiti utakmicu — provjeri link/broj i internet.${why}`)
       setFibaBusy(false)
     }
   }

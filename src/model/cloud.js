@@ -29,8 +29,9 @@ async function call(path, opts = {}) {
   if (res.status === 503) throw new CloudError('no-blob')
   const ct = res.headers.get('content-type') || ''
   if (!ct.includes('application/json')) throw new CloudError('none') // nema backenda
-  if (!res.ok) throw new CloudError('error')
-  return res.json()
+  const body = await res.json()
+  if (!res.ok) throw new CloudError(body && body.error ? body.error : 'error')
+  return body
 }
 
 const post = (path, body) => call(path, {
