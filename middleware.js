@@ -17,6 +17,7 @@ export const config = { matcher: '/(.*)' }
 const OPEN = [
   /^\/login\.html$/,
   /^\/api\/login$/,
+  /^\/api\/version$/,
   /^\/fonts\.css$/,
   /^\/fonts\//,
   /^\/crest\.(jpg|png)$/,

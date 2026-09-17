@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react'
 // base se postavlja preko env varijable radi GitHub Pages (/Statistika/)
 export default defineConfig({
   plugins: [react()],
+  define: { __BUILD__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')) },
   // Relativna baza: ista se objava služi i na / i na /statistika/.
   // GitHub Pages workflow i dalje šalje APP_BASE=/Statistika/.
   base: process.env.APP_BASE || (process.env.VERCEL ? '/stats/' : './'),

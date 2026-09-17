@@ -18,7 +18,7 @@ export default function SetupScreen({
     setFibaBusy(true)
     setFibaErr(null)
     try { await onFibaStart(fibaInput) } catch (e) {
-      const why = e && e.reason ? ` (${e.reason})` : ''
+      const why = e ? ` (${e.reason || e.message || 'nepoznato'})` : ''
       setFibaErr(`Ne mogu dohvatiti utakmicu — provjeri link/broj i internet.${why}`)
       setFibaBusy(false)
     }
@@ -312,6 +312,9 @@ export default function SetupScreen({
       {blockReason && <div className="hint err">{blockReason}</div>}
 
       <button className="btn xl primary wide" disabled={!canStart} onClick={start}>Pokreni utakmicu</button>
+
+      {/* eslint-disable-next-line no-undef */}
+      <div className="muted" style={{ textAlign: 'center', fontSize: 11 }}>verzija {typeof __BUILD__ !== 'undefined' ? __BUILD__ : '?'}</div>
     </div>
   )
 }
